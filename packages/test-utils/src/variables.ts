@@ -14,3 +14,13 @@ export const TEST_CONTRACT_ADDR = '0x0000000000000000000000000000000000000001';
 export const TEST_CONTRACT_ADDR_2 =
   '0x0000000000000000000000000000000000000002';
 export const TEST_CHAIN_ID = ChainId.SEPOLIA;
+
+export const TEST_SIWE_PARAMS = {
+  domain: 'localhost',
+  uri: 'http://localhost:3000',
+};
+
+export const TEST_ECDSA_PUBLIC_KEY =
+  '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXHVxB7s5SR7I9cWwry' +
+  '/JkECIReka\nCwG3uOLCYbw5gVzn4dRmwMyYUJFcQWuFSfECRK+uQOOXD0YSEucBq0p5tA==\n-----END PUBLIC ' +
+  'KEY-----\n ';

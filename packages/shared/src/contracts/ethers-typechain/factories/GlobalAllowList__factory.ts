@@ -49,6 +49,16 @@ const _abi = [
     ],
   },
   {
+    type: 'error',
+    name: 'InvalidInitialization',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'NotInitializing',
+    inputs: [],
+  },
+  {
     type: 'event',
     name: 'AddressAuthorizationSet',
     inputs: [
@@ -72,6 +82,51 @@ const _abi = [
       },
     ],
     anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'Initialized',
+    inputs: [
+      {
+        name: 'version',
+        type: 'uint64',
+        internalType: 'uint64',
+        indexed: false,
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'function',
+    name: 'MAX_AUTH_ACTIONS',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'authActions',
+    stateMutability: 'view',
+    inputs: [
+      {
+        name: '',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
   },
   {
     type: 'function',

@@ -3,10 +3,13 @@ import {
   decrypt,
   Domain,
   encrypt,
-  getPorterUri,
   initialize,
   ThresholdMessageKit,
 } from '@nucypher/taco';
+import {
+  EIP4361AuthProvider,
+  USER_ADDRESS_PARAM_DEFAULT,
+} from '@nucypher/taco-auth';
 import { ethers } from 'ethers';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -26,16 +29,19 @@ export default function useTaco({
   }, []);
 
   const decryptDataFromBytes = useCallback(
-    async (encryptedBytes: Uint8Array, signer?: ethers.Signer) => {
-      if (!isInit || !provider) return;
+    async (encryptedBytes: Uint8Array, signer: ethers.Signer) => {
+      if (!isInit || !provider) {
+        return;
+      }
       const messageKit = ThresholdMessageKit.fromBytes(encryptedBytes);
-      return decrypt(
-        provider,
-        domain,
-        messageKit,
-        getPorterUri(domain),
-        signer,
+      const authProvider = new EIP4361AuthProvider(provider, signer);
+      const conditionContext =
+        conditions.context.ConditionContext.fromMessageKit(messageKit);
+      conditionContext.addAuthProvider(
+        USER_ADDRESS_PARAM_DEFAULT,
+        authProvider,
       );
+      return decrypt(provider, domain, messageKit, conditionContext);
     },
     [isInit, provider, domain],
   );

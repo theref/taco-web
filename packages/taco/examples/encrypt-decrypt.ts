@@ -1,12 +1,15 @@
+import { ChainId } from '@nucypher/shared';
+import {
+  EIP4361AuthProvider,
+  USER_ADDRESS_PARAM_DEFAULT,
+} from '@nucypher/taco-auth';
 import { ethers } from 'ethers';
 
-import { ChainId } from '@nucypher/shared';
 import {
   conditions,
   decrypt,
   domains,
   encrypt,
-  getPorterUri,
   initialize,
   ThresholdMessageKit,
   toBytes,
@@ -45,12 +48,18 @@ const run = async () => {
 
     // @ts-ignore
     const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
+    const authProvider = new EIP4361AuthProvider(
+      web3Provider,
+      web3Provider.getSigner(),
+    );
+    const conditionContext =
+      conditions.context.ConditionContext.fromMessageKit(messageKit);
+    conditionContext.addAuthProvider(USER_ADDRESS_PARAM_DEFAULT, authProvider);
     const decryptedMessage = await decrypt(
       web3Provider,
       domains.TESTNET,
       messageKit,
-      getPorterUri(domains.TESTNET),
-      web3Provider.getSigner(),
+      conditionContext,
     );
     return decryptedMessage;
   };

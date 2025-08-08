@@ -4,6 +4,11 @@
   "compilerOptions": {
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true
-  }
+    "resolveJsonModule": true,
+  },
+  "references": [
+    {
+      "path": "../test-utils/tsconfig.es.json",
+    },
+  ],
 }

@@ -16,16 +16,6 @@ const _abi = [
         type: 'address',
         internalType: 'contract ITACoChildApplication',
       },
-      {
-        name: '_currency',
-        type: 'address',
-        internalType: 'contract IERC20',
-      },
-      {
-        name: '_feeRatePerSecond',
-        type: 'uint256',
-        internalType: 'uint256',
-      },
     ],
   },
   {
@@ -236,6 +226,19 @@ const _abi = [
   },
   {
     type: 'event',
+    name: 'FeeModelApproved',
+    inputs: [
+      {
+        name: 'feeModel',
+        type: 'address',
+        internalType: 'contract IFeeModel',
+        indexed: false,
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
     name: 'Initialized',
     inputs: [
       {
@@ -342,6 +345,25 @@ const _abi = [
         type: 'address',
         internalType: 'address',
         indexed: true,
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'RitualExtended',
+    inputs: [
+      {
+        name: 'ritualId',
+        type: 'uint32',
+        internalType: 'uint32',
+        indexed: true,
+      },
+      {
+        name: 'endTimestamp',
+        type: 'uint32',
+        internalType: 'uint32',
+        indexed: false,
       },
     ],
     anonymous: false,
@@ -518,7 +540,7 @@ const _abi = [
   },
   {
     type: 'function',
-    name: 'INITIATOR_ROLE',
+    name: 'FEE_MODEL_MANAGER_ROLE',
     stateMutability: 'view',
     inputs: [],
     outputs: [
@@ -561,6 +583,19 @@ const _abi = [
         internalType: 'contract ITACoChildApplication',
       },
     ],
+  },
+  {
+    type: 'function',
+    name: 'approveFeeModel',
+    stateMutability: 'nonpayable',
+    inputs: [
+      {
+        name: 'feeModel',
+        type: 'address',
+        internalType: 'contract IFeeModel',
+      },
+    ],
+    outputs: [],
   },
   {
     type: 'function',
@@ -616,19 +651,6 @@ const _abi = [
   },
   {
     type: 'function',
-    name: 'currency',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [
-      {
-        name: '',
-        type: 'address',
-        internalType: 'contract IERC20',
-      },
-    ],
-  },
-  {
-    type: 'function',
     name: 'defaultAdmin',
     stateMutability: 'view',
     inputs: [],
@@ -668,18 +690,18 @@ const _abi = [
   },
   {
     type: 'function',
-    name: 'feeDeduction',
+    name: 'expectedTranscriptSize',
     stateMutability: 'pure',
     inputs: [
       {
-        name: '',
-        type: 'uint256',
-        internalType: 'uint256',
+        name: 'dkgSize',
+        type: 'uint16',
+        internalType: 'uint16',
       },
       {
-        name: '',
-        type: 'uint256',
-        internalType: 'uint256',
+        name: 'threshold',
+        type: 'uint16',
+        internalType: 'uint16',
       },
     ],
     outputs: [
@@ -692,20 +714,101 @@ const _abi = [
   },
   {
     type: 'function',
-    name: 'feeRatePerSecond',
+    name: 'extendRitual',
+    stateMutability: 'nonpayable',
+    inputs: [
+      {
+        name: 'ritualId',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+      {
+        name: 'duration',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'feeModelsRegistry',
     stateMutability: 'view',
-    inputs: [],
+    inputs: [
+      {
+        name: '',
+        type: 'address',
+        internalType: 'contract IFeeModel',
+      },
+    ],
     outputs: [
       {
         name: '',
-        type: 'uint256',
-        internalType: 'uint256',
+        type: 'bool',
+        internalType: 'bool',
+      },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'getAccessController',
+    stateMutability: 'view',
+    inputs: [
+      {
+        name: 'ritualId',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'address',
+        internalType: 'contract IEncryptionAuthorizer',
       },
     ],
   },
   {
     type: 'function',
     name: 'getAuthority',
+    stateMutability: 'view',
+    inputs: [
+      {
+        name: 'ritualId',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'getFeeModel',
+    stateMutability: 'view',
+    inputs: [
+      {
+        name: 'ritualId',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'address',
+        internalType: 'contract IFeeModel',
+      },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'getInitiator',
     stateMutability: 'view',
     inputs: [
       {
@@ -1040,30 +1143,6 @@ const _abi = [
   },
   {
     type: 'function',
-    name: 'getRitualInitiationCost',
-    stateMutability: 'view',
-    inputs: [
-      {
-        name: 'providers',
-        type: 'address[]',
-        internalType: 'address[]',
-      },
-      {
-        name: 'duration',
-        type: 'uint32',
-        internalType: 'uint32',
-      },
-    ],
-    outputs: [
-      {
-        name: '',
-        type: 'uint256',
-        internalType: 'uint256',
-      },
-    ],
-  },
-  {
-    type: 'function',
     name: 'getRitualState',
     stateMutability: 'view',
     inputs: [
@@ -1116,6 +1195,30 @@ const _abi = [
         name: '',
         type: 'uint16',
         internalType: 'uint16',
+      },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'getTimestamps',
+    stateMutability: 'view',
+    inputs: [
+      {
+        name: 'ritualId',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+    ],
+    outputs: [
+      {
+        name: 'initTimestamp',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+      {
+        name: 'endTimestamp',
+        type: 'uint32',
+        internalType: 'uint32',
       },
     ],
   },
@@ -1186,9 +1289,21 @@ const _abi = [
   },
   {
     type: 'function',
+    name: 'initializeNumberOfRituals',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: 'function',
     name: 'initiateRitual',
     stateMutability: 'nonpayable',
     inputs: [
+      {
+        name: 'feeModel',
+        type: 'address',
+        internalType: 'contract IFeeModel',
+      },
       {
         name: 'providers',
         type: 'address[]',
@@ -1224,34 +1339,21 @@ const _abi = [
     stateMutability: 'view',
     inputs: [
       {
-        name: 'ritualId',
+        name: '',
         type: 'uint32',
         internalType: 'uint32',
       },
       {
-        name: 'evidence',
+        name: '',
         type: 'bytes',
         internalType: 'bytes',
       },
-      {
-        name: 'ciphertextHeader',
-        type: 'bytes',
-        internalType: 'bytes',
-      },
-    ],
-    outputs: [
       {
         name: '',
-        type: 'bool',
-        internalType: 'bool',
+        type: 'bytes',
+        internalType: 'bytes',
       },
     ],
-  },
-  {
-    type: 'function',
-    name: 'isInitiationPublic',
-    stateMutability: 'view',
-    inputs: [],
     outputs: [
       {
         name: '',
@@ -1286,11 +1388,30 @@ const _abi = [
   },
   {
     type: 'function',
-    name: 'isProviderPublicKeySet',
+    name: 'isProviderKeySet',
     stateMutability: 'view',
     inputs: [
       {
         name: 'provider',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'bool',
+        internalType: 'bool',
+      },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'isProviderPublicKeySet',
+    stateMutability: 'view',
+    inputs: [
+      {
+        name: '',
         type: 'address',
         internalType: 'address',
       },
@@ -1321,13 +1442,6 @@ const _abi = [
         internalType: 'bool',
       },
     ],
-  },
-  {
-    type: 'function',
-    name: 'makeInitiationPublic',
-    stateMutability: 'nonpayable',
-    inputs: [],
-    outputs: [],
   },
   {
     type: 'function',
@@ -1406,25 +1520,6 @@ const _abi = [
   },
   {
     type: 'function',
-    name: 'pendingFees',
-    stateMutability: 'view',
-    inputs: [
-      {
-        name: '',
-        type: 'uint256',
-        internalType: 'uint256',
-      },
-    ],
-    outputs: [
-      {
-        name: '',
-        type: 'uint256',
-        internalType: 'uint256',
-      },
-    ],
-  },
-  {
-    type: 'function',
     name: 'postAggregation',
     stateMutability: 'nonpayable',
     inputs: [
@@ -1469,6 +1564,24 @@ const _abi = [
     stateMutability: 'nonpayable',
     inputs: [
       {
+        name: '',
+        type: 'uint32',
+        internalType: 'uint32',
+      },
+      {
+        name: '',
+        type: 'bytes',
+        internalType: 'bytes',
+      },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'publishTranscript',
+    stateMutability: 'nonpayable',
+    inputs: [
+      {
         name: 'ritualId',
         type: 'uint32',
         internalType: 'uint32',
@@ -1483,22 +1596,16 @@ const _abi = [
   },
   {
     type: 'function',
-    name: 'processPendingFee',
+    name: 'reinitializeDefaultAdmin',
     stateMutability: 'nonpayable',
     inputs: [
       {
-        name: 'ritualId',
-        type: 'uint32',
-        internalType: 'uint32',
+        name: 'newDefaultAdmin',
+        type: 'address',
+        internalType: 'address',
       },
     ],
-    outputs: [
-      {
-        name: 'refundableFee',
-        type: 'uint256',
-        internalType: 'uint256',
-      },
-    ],
+    outputs: [],
   },
   {
     type: 'function',
@@ -1542,7 +1649,7 @@ const _abi = [
     stateMutability: 'view',
     inputs: [
       {
-        name: '',
+        name: 'ritualId',
         type: 'uint256',
         internalType: 'uint256',
       },
@@ -1619,6 +1726,11 @@ const _abi = [
         name: 'aggregatedTranscript',
         type: 'bytes',
         internalType: 'bytes',
+      },
+      {
+        name: 'feeModel',
+        type: 'address',
+        internalType: 'contract IFeeModel',
       },
     ],
   },
@@ -1732,19 +1844,6 @@ const _abi = [
   },
   {
     type: 'function',
-    name: 'totalPendingFees',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [
-      {
-        name: '',
-        type: 'uint256',
-        internalType: 'uint256',
-      },
-    ],
-  },
-  {
-    type: 'function',
     name: 'transferRitualAuthority',
     stateMutability: 'nonpayable',
     inputs: [
@@ -1763,18 +1862,13 @@ const _abi = [
   },
   {
     type: 'function',
-    name: 'withdrawTokens',
+    name: 'withdrawAllTokens',
     stateMutability: 'nonpayable',
     inputs: [
       {
         name: 'token',
         type: 'address',
         internalType: 'contract IERC20',
-      },
-      {
-        name: 'amount',
-        type: 'uint256',
-        internalType: 'uint256',
       },
     ],
     outputs: [],

@@ -31,17 +31,28 @@ import {
 import {
   ChecksumAddress,
   DkgCoordinatorAgent,
-  GetUrsulasResult,
   PorterClient,
   RetrieveCFragsResult,
   TacoDecryptResult,
-  toHexString,
   Ursula,
   zip,
 } from '@nucypher/shared';
-import axios from 'axios';
+import {
+  AuthProvider,
+  AuthSignature,
+  EIP1271AuthProvider,
+  EIP4361AuthProvider,
+  SingleSignOnEIP4361AuthProvider,
+} from '@nucypher/taco-auth';
 import { ethers, providers, Wallet } from 'ethers';
-import { expect, SpyInstance, vi } from 'vitest';
+import { expect, MockInstance, vi } from 'vitest';
+
+import { TEST_CONTRACT_ADDR, TEST_SIWE_PARAMS } from './variables';
+
+export const EIP4361 = 'EIP4361';
+export const SSO_EIP4361 = 'SSO4361';
+export const EIP1271 = 'EIP1271';
+export const BOGUS = 'Bogus';
 
 export const bytesEqual = (first: Uint8Array, second: Uint8Array): boolean =>
   first.length === second.length &&
@@ -52,47 +63,107 @@ export const fromBytes = (bytes: Uint8Array): string =>
 
 export const fakePorterUri = 'https://_this_should_crash.com/';
 
-const makeFakeProvider = (timestamp: number, blockNumber: number) => {
-  const block = { timestamp };
+const makeFakeProvider = (
+  timestamp: number,
+  blockNumber: number,
+  blockHash: string,
+) => {
+  const block = { timestamp, hash: blockHash };
   return {
     getBlockNumber: () => Promise.resolve(blockNumber),
     getBlock: () => Promise.resolve(block),
     _isProvider: true,
-    getNetwork: () => Promise.resolve({ name: 'mockNetwork', chainId: -1 }),
+    getNetwork: () => Promise.resolve({ name: 'mockNetwork', chainId: 1234 }),
   };
-};
-
-export const fakeSigner = (
-  secretKeyBytes = SecretKey.random().toBEBytes(),
-  blockNumber = 1000,
-  blockTimestamp = 1000,
-) => {
-  const provider = makeFakeProvider(blockNumber, blockTimestamp);
-  return {
-    ...new Wallet(secretKeyBytes),
-    provider: provider,
-    _signTypedData: () => Promise.resolve('fake-typed-signature'),
-    signMessage: () => Promise.resolve('fake-signature'),
-    getAddress: () =>
-      Promise.resolve('0x0000000000000000000000000000000000000000'),
-  } as unknown as ethers.providers.JsonRpcSigner;
 };
 
 export const fakeProvider = (
   secretKeyBytes = SecretKey.random().toBEBytes(),
   blockNumber = 1000,
   blockTimestamp = 1000,
+  blockHash = '0x0000000000000000000000000000000000000000',
 ): ethers.providers.Web3Provider => {
-  const fakeProvider = makeFakeProvider(blockTimestamp, blockNumber);
-  const fakeSignerWithProvider = fakeSigner(
-    secretKeyBytes,
-    blockNumber,
-    blockTimestamp,
-  );
+  const provider = makeFakeProvider(blockNumber, blockTimestamp, blockHash);
+  const wallet = new Wallet(secretKeyBytes);
+  const fakeSigner = {
+    ...wallet,
+    provider: provider,
+    _signTypedData: wallet._signTypedData,
+    signMessage: wallet.signMessage,
+    getAddress: wallet.getAddress,
+  } as unknown as ethers.providers.JsonRpcSigner;
+
   return {
-    ...fakeProvider,
-    getSigner: () => fakeSignerWithProvider,
+    ...provider,
+    getSigner: () => fakeSigner,
   } as unknown as ethers.providers.Web3Provider;
+};
+
+export const fakeAuthProviders = async (
+  signer?: ethers.providers.JsonRpcSigner,
+) => {
+  const signerToUse = signer ? signer : fakeProvider().getSigner();
+  return {
+    [EIP4361]: fakeEIP4361AuthProvider(signerToUse),
+    [SSO_EIP4361]: await fakeSingleSignOnEIP4361AuthProvider(signerToUse),
+    [EIP1271]: await fakeEIP1271AuthProvider(signerToUse),
+    [BOGUS]: fakeBogusAuthProvider(signerToUse),
+  };
+};
+
+class BogusAuthProvider implements AuthProvider {
+  constructor(private provider: ethers.providers.Web3Provider) {}
+
+  async getOrCreateAuthSignature(): Promise<AuthSignature> {
+    throw new Error('Bogus provider');
+  }
+}
+
+export const fakeBogusAuthProvider = (
+  signer: ethers.providers.JsonRpcSigner,
+) => {
+  const externalProvider: ethers.providers.ExternalProvider = {
+    send: (request, callback) => {
+      callback(new Error('Bogus provider'), null);
+    },
+    request: () => Promise.reject(new Error('Bogus provider')),
+  };
+  return new BogusAuthProvider(
+    new ethers.providers.Web3Provider(externalProvider),
+  );
+};
+
+const fakeEIP4361AuthProvider = (signer: ethers.providers.JsonRpcSigner) => {
+  return new EIP4361AuthProvider(signer.provider, signer, TEST_SIWE_PARAMS);
+};
+
+const fakeSingleSignOnEIP4361AuthProvider = async (
+  signer: ethers.providers.JsonRpcSigner,
+) => {
+  const eip4361Provider = new EIP4361AuthProvider(
+    signer.provider,
+    signer,
+    TEST_SIWE_PARAMS,
+  );
+  const authSignature = await eip4361Provider.getOrCreateAuthSignature();
+  return SingleSignOnEIP4361AuthProvider.fromExistingSiweInfo(
+    authSignature.typedData,
+    authSignature.signature,
+  );
+};
+
+const fakeEIP1271AuthProvider = async (
+  signer: ethers.providers.JsonRpcSigner,
+) => {
+  const message = `I'm the owner of the smart contract wallet at ${TEST_CONTRACT_ADDR}`;
+  const dataHash = ethers.utils.hashMessage(message);
+  const signature = await signer.signMessage(message);
+  return new EIP1271AuthProvider(
+    TEST_CONTRACT_ADDR,
+    (await signer.provider.getNetwork()).chainId,
+    dataHash,
+    signature,
+  );
 };
 
 const genChecksumAddress = (i: number): ChecksumAddress =>
@@ -113,25 +184,12 @@ export const fakeUrsulas = (n = 4): Ursula[] =>
 
 export const mockGetUrsulas = (
   ursulas: Ursula[] = fakeUrsulas(),
-): SpyInstance => {
-  const fakePorterUrsulas = (
-    mockUrsulas: readonly Ursula[],
-  ): GetUrsulasResult => {
-    return {
-      result: {
-        ursulas: mockUrsulas.map(({ encryptingKey, uri, checksumAddress }) => ({
-          encrypting_key: toHexString(encryptingKey.toCompressedBytes()),
-          uri: uri,
-          checksum_address: checksumAddress,
-        })),
-      },
-      version: '5.2.0',
-    };
-  };
-
-  return vi.spyOn(axios, 'get').mockImplementation(async () => {
-    return Promise.resolve({ data: fakePorterUrsulas(ursulas) });
-  });
+): MockInstance => {
+  return vi
+    .spyOn(PorterClient.prototype, 'getUrsulas')
+    .mockImplementation(async () => {
+      return Promise.resolve(ursulas);
+    });
 };
 
 const fakeCFragResponse = (
@@ -150,7 +208,7 @@ export const mockRetrieveCFragsRequest = (
   ursulas: readonly ChecksumAddress[],
   verifiedKFrags: readonly VerifiedKeyFrag[],
   capsule: Capsule,
-): SpyInstance => {
+): MockInstance => {
   const results = fakeCFragResponse(ursulas, verifiedKFrags, capsule);
   return vi
     .spyOn(PorterClient.prototype, 'retrieveCFrags')
@@ -291,7 +349,7 @@ export const mockTacoDecrypt = (
   participantSecrets: Record<string, SessionStaticSecret>,
   requesterPk: SessionStaticKey,
   errors: Record<string, string> = {},
-): SpyInstance => {
+): MockInstance => {
   const encryptedResponses: Record<
     string,
     EncryptedThresholdDecryptionResponse
@@ -317,7 +375,9 @@ export const mockTacoDecrypt = (
     });
 };
 
-export const mockGetRitualIdFromPublicKey = (ritualId: number): SpyInstance => {
+export const mockGetRitualIdFromPublicKey = (
+  ritualId: number,
+): MockInstance => {
   return vi
     .spyOn(DkgCoordinatorAgent, 'getRitualIdFromPublicKey')
     .mockImplementation(() => {
@@ -326,7 +386,7 @@ export const mockGetRitualIdFromPublicKey = (ritualId: number): SpyInstance => {
 };
 
 export const mockRetrieveAndDecrypt = (
-  makeTreasureMapSpy: SpyInstance,
+  makeTreasureMapSpy: MockInstance,
   encryptedMessageKit: MessageKit,
 ) => {
   // Setup mocks for `retrieveAndDecrypt`

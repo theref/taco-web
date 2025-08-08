@@ -1,15 +1,17 @@
 import { ChainId } from '@nucypher/shared';
-import { fakeProvider, fakeSigner } from '@nucypher/test-utils';
+import { AuthProvider, USER_ADDRESS_PARAM_DEFAULT } from '@nucypher/taco-auth';
+import { EIP4361, fakeAuthProviders } from '@nucypher/test-utils';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { initialize } from '../../src';
 import { CompoundCondition } from '../../src/conditions/compound-condition';
-import { SUPPORTED_CHAIN_IDS } from '../../src/conditions/const';
 import { ConditionContext } from '../../src/conditions/context';
 
 describe('conditions', () => {
+  let authProviders: Record<string, AuthProvider>;
   beforeAll(async () => {
     await initialize();
+    authProviders = await fakeAuthProviders();
   });
 
   it('creates a complex condition with custom parameters', async () => {
@@ -35,24 +37,16 @@ describe('conditions', () => {
       operands: [hasPositiveBalance, timeIsGreaterThan],
     });
     expect(condition).toBeDefined();
-    expect(condition.requiresSigner()).toBeTruthy();
+    expect(condition.requiresAuthentication()).toBeTruthy();
 
-    const context = new ConditionContext(
-      fakeProvider(),
-      condition,
-      { ':time': 100 },
-      fakeSigner(),
-    );
+    const context = new ConditionContext(condition);
+    context.addCustomContextParameterValues({ ':time': 100 });
+    context.addAuthProvider(USER_ADDRESS_PARAM_DEFAULT, authProviders[EIP4361]);
+
     expect(context).toBeDefined();
 
-    const asObj = await context.toObj();
+    const asObj = await context.toContextParameters();
     expect(asObj).toBeDefined();
     expect(asObj[':time']).toBe(100);
-  });
-
-  it('has supported chains consistent with shared', async () => {
-    const chainIdsAndNames = Object.values(ChainId);
-    const chainIds = chainIdsAndNames.filter((id) => typeof id === 'number');
-    expect(SUPPORTED_CHAIN_IDS).toEqual(chainIds);
   });
 });

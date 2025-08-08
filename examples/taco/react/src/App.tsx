@@ -1,27 +1,25 @@
-import {fromHexString} from "@nucypher/shared";
-import {conditions, domains, fromBytes, toHexString} from '@nucypher/taco';
-import {ethers} from 'ethers';
-import {hexlify} from 'ethers/lib/utils';
-import {useEffect, useState} from 'react';
+import { fromHexString } from '@nucypher/shared';
+import { conditions, domains, fromBytes, toHexString } from '@nucypher/taco';
+import { ethers } from 'ethers';
+import { hexlify } from 'ethers/lib/utils';
+import { useEffect, useState } from 'react';
 
 import useTaco from './hooks/useTaco';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const window: any;
 
-const ritualId = 0; // Replace with your own ritual ID
+const ritualId = 6; // Replace with your own ritual ID
 const domain = domains.TESTNET;
 
 function App() {
   const [provider, setProvider] = useState<
     ethers.providers.Web3Provider | undefined
   >();
-  const [message, setMessage] = useState('this is a secret')
-  const [encrypting, setEncrypting] = useState(false)
-  const [encryptedText, setEncryptedText] = useState<string | undefined>(
-    '',
-  );
-  const [decrypting, setDecrypting] = useState(false)
+  const [message, setMessage] = useState('this is a secret');
+  const [encrypting, setEncrypting] = useState(false);
+  const [encryptedText, setEncryptedText] = useState<string | undefined>('');
+  const [decrypting, setDecrypting] = useState(false);
   const [decryptedMessage, setDecryptedMessage] = useState<string | undefined>(
     '',
   );
@@ -84,13 +82,13 @@ function App() {
         signer,
       );
       if (encryptedBytes) {
-        setEncryptedText(toHexString(encryptedBytes))
+        setEncryptedText(toHexString(encryptedBytes));
       }
     } catch (e) {
-      console.log(e)
+      console.log(e);
     }
-    setEncrypting(false)
-  }
+    setEncrypting(false);
+  };
 
   const decryptMessage = async () => {
     if (!encryptedText || !provider) {
@@ -109,15 +107,32 @@ function App() {
         setDecryptedMessage(fromBytes(decryptedMessage));
       }
     } catch (e) {
-      console.log(e)
+      console.log(e);
     }
-    setDecrypting(false)
+    setDecrypting(false);
   };
 
   return (
     <div>
-      <h2>Secret message: <input value={message} onChange={(e) => setMessage(e.target.value)} onClick={encryptMessage}/> <button onClick={encryptMessage}>Encrypt</button> {encrypting && 'Encrypting...'}</h2>
-      <h2>Encrypted message: <input value={encryptedText} onChange={(e) => setEncryptedText(e.target.value)} /> <button onClick={decryptMessage}>Decrypt</button> {decrypting && 'Decrypting...'}</h2>
+      <h2>
+        Secret message:{' '}
+        <input
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onClick={encryptMessage}
+        />{' '}
+        <button onClick={encryptMessage}>Encrypt</button>{' '}
+        {encrypting && 'Encrypting...'}
+      </h2>
+      <h2>
+        Encrypted message:{' '}
+        <input
+          value={encryptedText}
+          onChange={(e) => setEncryptedText(e.target.value)}
+        />{' '}
+        <button onClick={decryptMessage}>Decrypt</button>{' '}
+        {decrypting && 'Decrypting...'}
+      </h2>
       {decryptedMessage && <h2>Decrypted message: {decryptedMessage}</h2>}
     </div>
   );

@@ -6,20 +6,27 @@ import {
   RetrievalKit,
   TreasureMap,
 } from '@nucypher/nucypher-core';
-import axios, { AxiosResponse } from 'axios';
+import axios, {
+  AxiosRequestConfig,
+  AxiosResponse,
+  HttpStatusCode,
+} from 'axios';
 import qs from 'qs';
 
 import { Base64EncodedBytes, ChecksumAddress, HexEncodedBytes } from './types';
 import { fromBase64, fromHexString, toBase64, toHexString } from './utils';
 
-const porterUri: Record<string, string> = {
-  mainnet: 'https://porter.nucypher.community',
-  tapir: 'https://porter-tapir.nucypher.community',
-  oryx: 'https://porter-oryx.nucypher.community',
-  lynx: 'https://porter-lynx.nucypher.community',
+const defaultPorterUri: Record<string, string> = {
+  mainnet: 'https://porter.nucypher.io',
+  tapir: 'https://porter-tapir.nucypher.io',
+  lynx: 'https://porter-lynx.nucypher.io',
 };
 
-export type Domain = keyof typeof porterUri;
+const porterUriSource: string =
+  'https://raw.githubusercontent.com/nucypher/nucypher-porter/main/porter_instances.json';
+
+export type Domain = keyof typeof defaultPorterUri;
+export type PorterURISourceResponse = Record<string, string[]>;
 
 export const domains: Record<string, Domain> = {
   DEVNET: 'lynx',
@@ -27,12 +34,38 @@ export const domains: Record<string, Domain> = {
   MAINNET: 'mainnet',
 };
 
-export const getPorterUri = (domain: Domain): string => {
-  const uri = porterUri[domain];
+export const getPorterUri = async (domain: Domain): Promise<string> => {
+  return (await getPorterUris(domain))[0];
+};
+
+export const getPorterUris = async (domain: Domain): Promise<string[]> => {
+  const fullList = [];
+  const uri = defaultPorterUri[domain];
   if (!uri) {
     throw new Error(`No default Porter URI found for domain: ${domain}`);
   }
-  return porterUri[domain];
+  fullList.push(uri);
+  const urisFromSource = await getPorterUrisFromSource(domain);
+  fullList.push(...urisFromSource);
+  return fullList;
+};
+
+export const getPorterUrisFromSource = async (
+  domain: Domain,
+): Promise<string[]> => {
+  const source = porterUriSource;
+  if (!source) {
+    return [];
+  }
+  try {
+    const resp = await axios.get(porterUriSource, {
+      responseType: 'blob',
+    });
+    const uris: PorterURISourceResponse = JSON.parse(resp.data);
+    return uris[domain];
+  } catch (e) {
+    return [];
+  }
 };
 
 // /get_ursulas
@@ -119,11 +152,99 @@ export type TacoDecryptResult = {
   errors: Record<string, string>;
 };
 
-export class PorterClient {
-  readonly porterUrl: URL;
+// Signing types
+type TacoSignResponse = {
+  readonly result: {
+    readonly signing_results: {
+      readonly signatures: Record<
+        ChecksumAddress,
+        [ChecksumAddress, Base64EncodedBytes]
+      >;
+      readonly errors: Record<ChecksumAddress, string>;
+    };
+  };
+};
 
-  constructor(porterUri: string) {
-    this.porterUrl = new URL(porterUri);
+export type TacoSignature = {
+  messageHash: string;
+  signature: string;
+  signerAddress: string;
+};
+
+export type TacoSignResult = {
+  signingResults: { [ursulaAddress: string]: TacoSignature };
+  errors: Record<string, string>;
+};
+
+function decodeSignature(
+  signerAddress: string,
+  signatureB64: string,
+): { result?: TacoSignature; error?: string } {
+  try {
+    const decodedData = JSON.parse(
+      new TextDecoder().decode(fromBase64(signatureB64)),
+    );
+    return {
+      result: {
+        messageHash: decodedData.message_hash,
+        signature: decodedData.signature,
+        signerAddress,
+      },
+    };
+  } catch (error) {
+    return {
+      error: `Failed to decode signature: ${error}`,
+    };
+  }
+}
+
+export class PorterClient {
+  readonly porterUrls: URL[];
+
+  constructor(porterUris: string | string[]) {
+    if (porterUris instanceof Array) {
+      this.porterUrls = porterUris.map((uri) => new URL(uri));
+    } else {
+      this.porterUrls = [new URL(porterUris)];
+    }
+  }
+
+  protected async tryAndCall<T, D>(
+    config: AxiosRequestConfig<D>,
+  ): Promise<AxiosResponse<T>> {
+    let resp!: AxiosResponse<T>;
+    let lastError = undefined;
+    for (const porterUrl of this.porterUrls) {
+      const localConfig = { ...config, baseURL: porterUrl.toString() };
+      try {
+        resp = await axios.request(localConfig);
+        if (resp.status === HttpStatusCode.Ok) {
+          return resp;
+        }
+      } catch (e: unknown) {
+        const errorDetails: Record<string, unknown> = {
+          url: porterUrl.toString(),
+          method: config.method,
+          requestData: config.data,
+        };
+
+        if (axios.isAxiosError(e)) {
+          errorDetails.status = e.response?.status;
+          errorDetails.statusText = e.response?.statusText;
+          errorDetails.data = e.response?.data;
+        }
+
+        console.error('Porter request failed:', errorDetails);
+        lastError = e;
+        continue;
+      }
+    }
+    if (lastError) {
+      throw lastError;
+    }
+    throw new Error(
+      `Porter returned bad response: ${resp.status} - ${resp.data}`,
+    );
   }
 
   public async getUrsulas(
@@ -136,15 +257,14 @@ export class PorterClient {
       exclude_ursulas: excludeUrsulas,
       include_ursulas: includeUrsulas,
     };
-    const resp: AxiosResponse<GetUrsulasResult> = await axios.get(
-      new URL('/get_ursulas', this.porterUrl).toString(),
-      {
-        params,
-        paramsSerializer: (params) => {
-          return qs.stringify(params, { arrayFormat: 'comma' });
-        },
+    const resp: AxiosResponse<GetUrsulasResult> = await this.tryAndCall({
+      url: '/get_ursulas',
+      method: 'get',
+      params: params,
+      paramsSerializer: (params) => {
+        return qs.stringify(params, { arrayFormat: 'comma' });
       },
-    );
+    });
     return resp.data.result.ursulas.map((u: UrsulaResponse) => ({
       checksumAddress: u.checksum_address,
       uri: u.uri,
@@ -170,10 +290,12 @@ export class PorterClient {
       bob_verifying_key: toHexString(bobVerifyingKey.toCompressedBytes()),
       context: conditionContextJSON,
     };
-    const resp: AxiosResponse<PostRetrieveCFragsResponse> = await axios.post(
-      new URL('/retrieve_cfrags', this.porterUrl).toString(),
-      data,
-    );
+    const resp: AxiosResponse<PostRetrieveCFragsResponse> =
+      await this.tryAndCall({
+        url: '/retrieve_cfrags',
+        method: 'post',
+        data: data,
+      });
 
     return resp.data.result.retrieval_results.map(({ cfrags, errors }) => {
       const parsed = Object.keys(cfrags).map((address) => [
@@ -198,10 +320,11 @@ export class PorterClient {
       ),
       threshold,
     };
-    const resp: AxiosResponse<PostTacoDecryptResponse> = await axios.post(
-      new URL('/decrypt', this.porterUrl).toString(),
-      data,
-    );
+    const resp: AxiosResponse<PostTacoDecryptResponse> = await this.tryAndCall({
+      url: '/decrypt',
+      method: 'post',
+      data: data,
+    });
 
     const { encrypted_decryption_responses, errors } =
       resp.data.result.decryption_results;
@@ -219,5 +342,43 @@ export class PorterClient {
       EncryptedThresholdDecryptionResponse
     > = Object.fromEntries(decryptionResponses);
     return { encryptedResponses, errors };
+  }
+
+  public async signUserOp(
+    signingRequests: Record<string, string>,
+    threshold: number,
+  ): Promise<TacoSignResult> {
+    const data: Record<string, unknown> = {
+      signing_requests: signingRequests,
+      threshold: threshold,
+    };
+
+    const resp: AxiosResponse<TacoSignResponse> = await this.tryAndCall({
+      url: '/sign',
+      method: 'post',
+      data,
+    });
+
+    const { signatures, errors } = resp.data.result.signing_results;
+    const allErrors: Record<string, string> = { ...errors };
+
+    const signingResults: { [ursulaAddress: string]: TacoSignature } = {};
+    for (const [ursulaAddress, [signerAddress, signatureB64]] of Object.entries(
+      signatures || {},
+    )) {
+      const decoded = decodeSignature(signerAddress, signatureB64);
+      if (decoded.error) {
+        // issue with decoding signature, add to errors
+        allErrors[ursulaAddress] = decoded.error;
+        continue;
+      }
+      // Always include all decoded signatures in signingResults
+      signingResults[ursulaAddress] = decoded.result!;
+    }
+
+    return {
+      signingResults,
+      errors: allErrors,
+    };
   }
 }

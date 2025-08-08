@@ -1,6 +1,7 @@
 export * from './contracts';
 export * from './porter';
-export type * from './types';
+export * from './schemas';
+export * from './types';
 export * from './utils';
 export * from './web3';
 

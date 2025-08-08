@@ -4,10 +4,13 @@ import {
   domains,
   encrypt,
   fromBytes,
-  getPorterUri,
   initialize,
   toBytes,
 } from '@nucypher/taco';
+import {
+  EIP4361AuthProvider,
+  USER_ADDRESS_PARAM_DEFAULT,
+} from '@nucypher/taco-auth';
 import { ethers } from 'ethers';
 import { hexlify } from 'ethers/lib/utils';
 
@@ -17,7 +20,7 @@ declare const window: any;
 const runExample = async () => {
   await initialize();
 
-  const ritualId = 0; // Replace with your own ritual ID
+  const ritualId = 6; // Replace with your own ritual ID
   const domain = domains.TESTNET;
 
   const provider = new ethers.providers.Web3Provider(window.ethereum!, 'any');
@@ -47,8 +50,8 @@ const runExample = async () => {
     },
   });
   console.assert(
-    hasPositiveBalance.requiresSigner(),
-    'Condition requires signer',
+    hasPositiveBalance.requiresAuthentication(),
+    'Condition requires authentication',
   );
   const messageKit = await encrypt(
     provider,
@@ -60,12 +63,15 @@ const runExample = async () => {
   );
 
   console.log('Decrypting message...');
+  const authProvider = new EIP4361AuthProvider(provider, signer);
+  const conditionContext =
+    conditions.context.ConditionContext.fromMessageKit(messageKit);
+  conditionContext.addAuthProvider(USER_ADDRESS_PARAM_DEFAULT, authProvider);
   const decryptedBytes = await decrypt(
     provider,
     domain,
     messageKit,
-    getPorterUri(domain),
-    signer,
+    conditionContext,
   );
   const decryptedMessage = fromBytes(decryptedBytes);
   console.log('Decrypted message:', decryptedMessage);

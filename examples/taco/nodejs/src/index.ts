@@ -1,18 +1,20 @@
 import { format } from 'node:util';
 
 import {
+  ThresholdMessageKit,
   conditions,
   decrypt,
   domains,
   encrypt,
   fromBytes,
-  getPorterUri,
   initialize,
-  isAuthorized,
-  ThresholdMessageKit,
   toBytes,
   toHexString,
 } from '@nucypher/taco';
+import {
+  EIP4361AuthProvider,
+  USER_ADDRESS_PARAM_DEFAULT,
+} from '@nucypher/taco-auth';
 import * as dotenv from 'dotenv';
 import { ethers } from 'ethers';
 
@@ -34,7 +36,7 @@ if (!consumerPrivateKey) {
 }
 
 const domain = process.env.DOMAIN || domains.TESTNET;
-const ritualId = parseInt(process.env.RITUAL_ID || '0');
+const ritualId = parseInt(process.env.RITUAL_ID || '6');
 const provider = new ethers.providers.JsonRpcProvider(rpcProviderUrl);
 const CHAIN_ID_FOR_DOMAIN = {
   [domains.MAINNET]: 137,
@@ -50,7 +52,7 @@ console.log('Chain ID:', chainId);
 const encryptToBytes = async (messageString: string) => {
   const encryptorSigner = new ethers.Wallet(encryptorPrivateKey);
   console.log(
-    'Encryptor signer\'s address:',
+    "Encryptor signer's address:",
     await encryptorSigner.getAddress(),
   );
 
@@ -67,8 +69,8 @@ const encryptToBytes = async (messageString: string) => {
     },
   });
   console.assert(
-    hasPositiveBalance.requiresSigner(),
-    'Condition requires signer',
+    hasPositiveBalance.requiresAuthentication(),
+    'Condition requires authentication',
   );
 
   const messageKit = await encrypt(
@@ -80,44 +82,45 @@ const encryptToBytes = async (messageString: string) => {
     encryptorSigner,
   );
 
-  // Note: Not actually needed but used by CI for checking contract compatibility.
-  // Calling it after the encryption because we need material from messageKit.
-  const isEncryptorAuthenticated = await isAuthorized(
-    provider,
-    domain,
-    messageKit,
-    ritualId,
-  );
-  if (!isEncryptorAuthenticated) {
-    throw new Error('Not authorized');
-  }
-
   return messageKit.toBytes();
 };
 
 const decryptFromBytes = async (encryptedBytes: Uint8Array) => {
   const consumerSigner = new ethers.Wallet(consumerPrivateKey);
   console.log(
-    '\nConsumer signer\'s address:',
+    "\nConsumer signer's address:",
     await consumerSigner.getAddress(),
   );
 
   const messageKit = ThresholdMessageKit.fromBytes(encryptedBytes);
   console.log('Decrypting message ...');
-  return decrypt(
-    provider,
-    domain,
-    messageKit,
-    getPorterUri(domain),
-    consumerSigner,
-  );
+  const siweParams = {
+    domain: 'localhost',
+    uri: 'http://localhost:3000',
+  };
+  const conditionContext =
+    conditions.context.ConditionContext.fromMessageKit(messageKit);
+
+  // illustrative optional example of checking what context parameters are required
+  // unnecessary if you already know what the condition contains
+  if (
+    conditionContext.requestedContextParameters.has(USER_ADDRESS_PARAM_DEFAULT)
+  ) {
+    const authProvider = new EIP4361AuthProvider(
+      provider,
+      consumerSigner,
+      siweParams,
+    );
+    conditionContext.addAuthProvider(USER_ADDRESS_PARAM_DEFAULT, authProvider);
+  }
+  return decrypt(provider, domain, messageKit, conditionContext);
 };
 
 const runExample = async () => {
   // Make sure the provider is connected to the correct network
   const network = await provider.getNetwork();
   if (network.chainId !== chainId) {
-    throw (`Please connect your provider to an appropriate network ${chainId}`);
+    throw `Please connect your provider to an appropriate network ${chainId}`;
   }
   await initialize();
 

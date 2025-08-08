@@ -10,7 +10,7 @@ import {
   toHexString,
 } from '@nucypher/pre';
 import { ethers } from 'ethers';
-import { hexlify } from "ethers/lib/utils";
+import { hexlify } from 'ethers/lib/utils';
 import { useEffect, useState } from 'react';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,7 +109,7 @@ function App() {
       provider,
       provider.getSigner(),
       domains.TESTNET,
-      getPorterUri(domains.TESTNET),
+      await getPorterUri(domains.TESTNET),
       policyParams,
     );
 

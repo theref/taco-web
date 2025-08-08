@@ -1,5 +1,7 @@
 import { initialize } from '@nucypher/nucypher-core';
-import { fakeProvider, fakeSigner } from '@nucypher/test-utils';
+import { AuthProvider, USER_ADDRESS_PARAM_DEFAULT } from '@nucypher/taco-auth';
+import { EIP4361, fakeAuthProviders } from '@nucypher/test-utils';
+import { ethers } from 'ethers';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -9,9 +11,11 @@ import {
   ContractConditionType,
   FunctionAbiProps,
 } from '../../../src/conditions/base/contract';
-import { ConditionExpression } from '../../../src/conditions/condition-expr';
-import { USER_ADDRESS_PARAM } from '../../../src/conditions/const';
-import { CustomContextParam } from '../../../src/conditions/context';
+import { USER_ADDRESS_PARAMS } from '../../../src/conditions/const';
+import {
+  ConditionContext,
+  CustomContextParam,
+} from '../../../src/conditions/context';
 import { testContractConditionObj, testFunctionAbi } from '../../test-utils';
 
 describe('validation', () => {
@@ -55,7 +59,7 @@ describe('validation', () => {
 
 describe('accepts either standardContractType or functionAbi but not both or none', () => {
   const standardContractType = 'ERC20';
-  const functionAbi = {
+  const functionAbi: FunctionAbiProps = {
     inputs: [
       {
         name: '_owner',
@@ -76,11 +80,11 @@ describe('accepts either standardContractType or functionAbi but not both or non
   };
 
   it('accepts standardContractType', () => {
-    const conditionObj = {
+    const conditionObj: ContractConditionProps = {
       ...testContractConditionObj,
       standardContractType,
       functionAbi: undefined,
-    } as typeof testContractConditionObj;
+    };
     const result = ContractCondition.validate(
       contractConditionSchema,
       conditionObj,
@@ -91,11 +95,11 @@ describe('accepts either standardContractType or functionAbi but not both or non
   });
 
   it('accepts functionAbi', () => {
-    const conditionObj = {
+    const conditionObj: ContractConditionProps = {
       ...testContractConditionObj,
       functionAbi,
       standardContractType: undefined,
-    } as typeof testContractConditionObj;
+    };
     const result = ContractCondition.validate(
       contractConditionSchema,
       conditionObj,
@@ -150,36 +154,62 @@ describe('accepts either standardContractType or functionAbi but not both or non
   });
 });
 
-describe('supports custom function abi', () => {
+describe('supports various user address params', () => {
+  it.each(USER_ADDRESS_PARAMS)(
+    'handles different user address context params',
+    (userAddressContextParam) => {
+      const contractConditionObj: ContractConditionProps = {
+        ...testContractConditionObj,
+        parameters: [userAddressContextParam],
+      };
+
+      const result = ContractCondition.validate(
+        contractConditionSchema,
+        contractConditionObj,
+      );
+
+      expect(result.error).toBeUndefined();
+    },
+  );
+});
+
+describe('supports custom function abi', async () => {
   const contractConditionObj: ContractConditionProps = {
     ...testContractConditionObj,
     standardContractType: undefined,
     functionAbi: testFunctionAbi,
     method: 'myFunction',
-    parameters: [USER_ADDRESS_PARAM, ':customParam'],
+    parameters: [USER_ADDRESS_PARAM_DEFAULT, ':customParam'],
     returnValueTest: {
       comparator: '==',
-      value: 100,
+      // test with a value that is 0.01 * 10^18 = 10000000000000000n wei
+      // which is larger than Number.MAX_SAFE_INTEGER (9007199254740991)
+      value: ethers.utils.parseEther('0.01').toBigInt(),
     },
   };
   const contractCondition = new ContractCondition(contractConditionObj);
-  const conditionExpr = new ConditionExpression(contractCondition);
   const myCustomParam = ':customParam';
   const customParams: Record<string, CustomContextParam> = {};
   customParams[myCustomParam] = 1234;
 
+  let authProviders: Record<string, AuthProvider>;
   beforeAll(async () => {
     await initialize();
+    authProviders = await fakeAuthProviders();
   });
 
   it('accepts custom function abi with a custom parameter', async () => {
-    const asJson = await conditionExpr
-      .buildContext(fakeProvider(), {}, fakeSigner())
-      .withCustomParams(customParams)
-      .toJson();
+    const conditionContext = new ConditionContext(contractCondition);
+    conditionContext.addCustomContextParameterValues(customParams);
 
+    conditionContext.addAuthProvider(
+      USER_ADDRESS_PARAM_DEFAULT,
+      authProviders[EIP4361],
+    );
+
+    const asJson = await conditionContext.toJson();
     expect(asJson).toBeDefined();
-    expect(asJson).toContain(USER_ADDRESS_PARAM);
+    expect(asJson).toContain(USER_ADDRESS_PARAM_DEFAULT);
     expect(asJson).toContain(myCustomParam);
   });
 
@@ -312,7 +342,7 @@ describe('supports custom function abi', () => {
   it.each([
     {
       contractAddress: '0x123',
-      error: ['Invalid', 'String must contain exactly 42 character(s)'],
+      error: ['Invalid Ethereum address'],
     },
     { contractAddress: undefined, error: ['Required'] },
   ])('rejects invalid contract address', async ({ contractAddress, error }) => {

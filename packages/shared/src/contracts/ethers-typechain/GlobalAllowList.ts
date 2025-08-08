@@ -28,6 +28,8 @@ import type {
 
 export interface GlobalAllowListInterface extends utils.Interface {
   functions: {
+    'MAX_AUTH_ACTIONS()': FunctionFragment;
+    'authActions(uint32)': FunctionFragment;
     'authorize(uint32,address[])': FunctionFragment;
     'coordinator()': FunctionFragment;
     'deauthorize(uint32,address[])': FunctionFragment;
@@ -37,6 +39,8 @@ export interface GlobalAllowListInterface extends utils.Interface {
 
   getFunction(
     nameOrSignatureOrTopic:
+      | 'MAX_AUTH_ACTIONS'
+      | 'authActions'
       | 'authorize'
       | 'coordinator'
       | 'deauthorize'
@@ -44,6 +48,14 @@ export interface GlobalAllowListInterface extends utils.Interface {
       | 'isAuthorized',
   ): FunctionFragment;
 
+  encodeFunctionData(
+    functionFragment: 'MAX_AUTH_ACTIONS',
+    values?: undefined,
+  ): string;
+  encodeFunctionData(
+    functionFragment: 'authActions',
+    values: [BigNumberish],
+  ): string;
   encodeFunctionData(
     functionFragment: 'authorize',
     values: [BigNumberish, string[]],
@@ -65,6 +77,14 @@ export interface GlobalAllowListInterface extends utils.Interface {
     values: [BigNumberish, BytesLike, BytesLike],
   ): string;
 
+  decodeFunctionResult(
+    functionFragment: 'MAX_AUTH_ACTIONS',
+    data: BytesLike,
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: 'authActions',
+    data: BytesLike,
+  ): Result;
   decodeFunctionResult(functionFragment: 'authorize', data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: 'coordinator',
@@ -85,9 +105,11 @@ export interface GlobalAllowListInterface extends utils.Interface {
 
   events: {
     'AddressAuthorizationSet(uint32,address,bool)': EventFragment;
+    'Initialized(uint64)': EventFragment;
   };
 
   getEvent(nameOrSignatureOrTopic: 'AddressAuthorizationSet'): EventFragment;
+  getEvent(nameOrSignatureOrTopic: 'Initialized'): EventFragment;
 }
 
 export interface AddressAuthorizationSetEventObject {
@@ -102,6 +124,13 @@ export type AddressAuthorizationSetEvent = TypedEvent<
 
 export type AddressAuthorizationSetEventFilter =
   TypedEventFilter<AddressAuthorizationSetEvent>;
+
+export interface InitializedEventObject {
+  version: BigNumber;
+}
+export type InitializedEvent = TypedEvent<[BigNumber], InitializedEventObject>;
+
+export type InitializedEventFilter = TypedEventFilter<InitializedEvent>;
 
 export interface GlobalAllowList extends BaseContract {
   connect(signerOrProvider: Signer | Provider | string): this;
@@ -130,6 +159,13 @@ export interface GlobalAllowList extends BaseContract {
   removeListener: OnEvent<this>;
 
   functions: {
+    MAX_AUTH_ACTIONS(overrides?: CallOverrides): Promise<[number]>;
+
+    authActions(
+      arg0: BigNumberish,
+      overrides?: CallOverrides,
+    ): Promise<[BigNumber]>;
+
     authorize(
       ritualId: BigNumberish,
       addresses: string[],
@@ -157,6 +193,13 @@ export interface GlobalAllowList extends BaseContract {
       overrides?: CallOverrides,
     ): Promise<[boolean]>;
   };
+
+  MAX_AUTH_ACTIONS(overrides?: CallOverrides): Promise<number>;
+
+  authActions(
+    arg0: BigNumberish,
+    overrides?: CallOverrides,
+  ): Promise<BigNumber>;
 
   authorize(
     ritualId: BigNumberish,
@@ -186,6 +229,13 @@ export interface GlobalAllowList extends BaseContract {
   ): Promise<boolean>;
 
   callStatic: {
+    MAX_AUTH_ACTIONS(overrides?: CallOverrides): Promise<number>;
+
+    authActions(
+      arg0: BigNumberish,
+      overrides?: CallOverrides,
+    ): Promise<BigNumber>;
+
     authorize(
       ritualId: BigNumberish,
       addresses: string[],
@@ -225,9 +275,19 @@ export interface GlobalAllowList extends BaseContract {
       _address?: string | null,
       isAuthorized?: null,
     ): AddressAuthorizationSetEventFilter;
+
+    'Initialized(uint64)'(version?: null): InitializedEventFilter;
+    Initialized(version?: null): InitializedEventFilter;
   };
 
   estimateGas: {
+    MAX_AUTH_ACTIONS(overrides?: CallOverrides): Promise<BigNumber>;
+
+    authActions(
+      arg0: BigNumberish,
+      overrides?: CallOverrides,
+    ): Promise<BigNumber>;
+
     authorize(
       ritualId: BigNumberish,
       addresses: string[],
@@ -257,6 +317,13 @@ export interface GlobalAllowList extends BaseContract {
   };
 
   populateTransaction: {
+    MAX_AUTH_ACTIONS(overrides?: CallOverrides): Promise<PopulatedTransaction>;
+
+    authActions(
+      arg0: BigNumberish,
+      overrides?: CallOverrides,
+    ): Promise<PopulatedTransaction>;
+
     authorize(
       ritualId: BigNumberish,
       addresses: string[],

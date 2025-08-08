@@ -25,13 +25,14 @@
   "dependencies": {
     "@nucypher/shared": "workspace:*",
     "@nucypher/taco": "workspace:*",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "@nucypher/taco-auth": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/node": "^20.11.30",
-    "@types/react": "^18.2.48",
-    "@types/react-dom": "^18.2.18",
+    "@types/node": "^20.17.28",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.5",
     "react-scripts": "^5.0.1"
   },
   "peerDependencies": {

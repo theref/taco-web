@@ -1,189 +1,306 @@
-import { Context, Conditions as WASMConditions } from '@nucypher/nucypher-core';
-import { fromJSON, toJSON } from '@nucypher/shared';
+import { ThresholdMessageKit } from '@nucypher/nucypher-core';
+import { Domain, SigningCoordinatorAgent } from '@nucypher/shared';
+import {
+  AuthProvider,
+  AuthSignature,
+  EIP1271AuthProvider,
+  EIP4361AuthProvider,
+  SingleSignOnEIP4361AuthProvider,
+  USER_ADDRESS_PARAM_DEFAULT,
+} from '@nucypher/taco-auth';
 import { ethers } from 'ethers';
 
-import { CompoundConditionType } from '../compound-condition';
+import { CoreConditions, CoreContext } from '../../types';
+import { toJSON } from '../../utils';
 import { Condition, ConditionProps } from '../condition';
 import { ConditionExpression } from '../condition-expr';
 import {
+  CONTEXT_PARAM_FULL_MATCH_REGEXP,
   CONTEXT_PARAM_PREFIX,
   CONTEXT_PARAM_REGEXP,
-  RESERVED_CONTEXT_PARAMS,
-  USER_ADDRESS_PARAM,
+  USER_ADDRESS_PARAMS,
 } from '../const';
+import { SIGNING_CONDITION_OBJECT_CONTEXT_VAR } from '../schemas/signing';
 
-import { TypedSignature, WalletAuthenticationProvider } from './providers';
-
-export type CustomContextParam = string | number | boolean;
-export type ContextParam = CustomContextParam | TypedSignature;
+export type CustomContextParam =
+  | string
+  | number
+  | boolean
+  | bigint
+  | Uint8Array;
+export type ContextParam = CustomContextParam | AuthSignature;
 
 const ERR_RESERVED_PARAM = (key: string) =>
   `Cannot use reserved parameter name ${key} as custom parameter`;
 const ERR_INVALID_CUSTOM_PARAM = (key: string) =>
   `Custom parameter ${key} must start with ${CONTEXT_PARAM_PREFIX}`;
-const ERR_SIGNER_REQUIRED = `Signer required to satisfy ${USER_ADDRESS_PARAM} context variable in condition`;
+const ERR_AUTH_PROVIDER_REQUIRED = (key: string) =>
+  `No matching authentication provider to satisfy ${key} context variable in condition`;
 const ERR_MISSING_CONTEXT_PARAMS = (params: string[]) =>
   `Missing custom context parameter(s): ${params.join(', ')}`;
-const ERR_UNKNOWN_CONTEXT_PARAMS = (params: string[]) =>
-  `Unknown custom context parameter(s): ${params.join(', ')}`;
+const ERR_UNKNOWN_CUSTOM_CONTEXT_PARAM = (param: string) =>
+  `Unknown custom context parameter: ${param}`;
+const ERR_INVALID_AUTH_PROVIDER_TYPE = (param: string, expected: string) =>
+  `Invalid AuthProvider type for ${param}; expected ${expected}`;
+const ERR_AUTH_PROVIDER_NOT_NEEDED_FOR_CONTEXT_PARAM = (param: string) =>
+  `AuthProvider not necessary for context parameter: ${param}`;
+const ERR_AUTO_INJECTED_CONTEXT_PARAM = (param: string) =>
+  `Context parameter ${param} is automatically injected and cannot be set manually`;
+
+type AuthProviderType =
+  | typeof EIP4361AuthProvider
+  | typeof EIP1271AuthProvider
+  | typeof SingleSignOnEIP4361AuthProvider;
+
+const EXPECTED_AUTH_PROVIDER_TYPES: Record<string, AuthProviderType[]> = {
+  [USER_ADDRESS_PARAM_DEFAULT]: [
+    EIP4361AuthProvider,
+    EIP1271AuthProvider,
+    SingleSignOnEIP4361AuthProvider,
+  ],
+};
+
+export const AUTOMATICALLY_INJECTED_CONTEXT_PARAMS = [
+  // These context parameters are automatically injected on the node side.
+  SIGNING_CONDITION_OBJECT_CONTEXT_VAR,
+];
+export const RESERVED_CONTEXT_PARAMS = [
+  USER_ADDRESS_PARAM_DEFAULT,
+  SIGNING_CONDITION_OBJECT_CONTEXT_VAR,
+];
 
 export class ConditionContext {
-  private readonly walletAuthProvider?: WalletAuthenticationProvider;
+  public requestedContextParameters: Set<string>;
+  private customContextParameters: Record<string, CustomContextParam> = {};
+  private authProviders: Record<string, AuthProvider> = {};
 
-  constructor(
-    private readonly provider: ethers.providers.Provider,
-    private readonly condition: Condition,
-    public readonly customParameters: Record<string, CustomContextParam> = {},
-    private readonly signer?: ethers.Signer,
+  constructor(condition: Condition) {
+    const condProps = condition.toObj();
+    ConditionContext.validateCoreConditions(condProps);
+    this.requestedContextParameters =
+      ConditionContext.findContextParameters(condProps);
+  }
+
+  private static validateCoreConditions(condObject: ConditionProps) {
+    // Checking whether the condition is compatible with the current version of the library
+    // Intentionally ignoring the return value of the function
+    new CoreConditions(toJSON(condObject));
+  }
+
+  private validateNoMissingContextParameters(
+    parameters: Record<string, ContextParam>,
   ) {
-    if (this.signer) {
-      this.walletAuthProvider = new WalletAuthenticationProvider(
-        this.provider,
-        this.signer,
-      );
-    }
-    this.validate();
-  }
-
-  private validate(): void {
-    Object.keys(this.customParameters).forEach((key) => {
-      if (RESERVED_CONTEXT_PARAMS.includes(key)) {
-        throw new Error(ERR_RESERVED_PARAM(key));
-      }
-      if (!key.startsWith(CONTEXT_PARAM_PREFIX)) {
-        throw new Error(ERR_INVALID_CUSTOM_PARAM(key));
-      }
-    });
-
-    if (this.condition.requiresSigner() && !this.signer) {
-      throw new Error(ERR_SIGNER_REQUIRED);
-    }
-  }
-
-  public toObj = async (): Promise<Record<string, ContextParam>> => {
-    const condObject = this.condition.toObj();
-    const parsedCondObject = fromJSON(
-      new WASMConditions(toJSON(condObject)).toString(),
-    );
-    const requestedParameters = this.findRequestedParameters(parsedCondObject);
-    const parameters = await this.fillContextParameters(requestedParameters);
-
     // Ok, so at this point we should have all the parameters we need
     // If we don't, we have a problem and we should throw
-    const missingParameters = Array.from(requestedParameters).filter(
-      (key) => parameters[key] === undefined,
-    );
+    const missingParameters = Array.from(
+      this.requestedContextParameters,
+    ).filter((key) => parameters[key] === undefined);
     if (missingParameters.length > 0) {
       throw new Error(ERR_MISSING_CONTEXT_PARAMS(missingParameters));
     }
-
-    // We may also have some parameters that are not used
-    const unknownParameters = Object.keys(parameters).filter(
-      (key) =>
-        !requestedParameters.has(key) && !RESERVED_CONTEXT_PARAMS.includes(key),
-    );
-    if (unknownParameters.length > 0) {
-      throw new Error(ERR_UNKNOWN_CONTEXT_PARAMS(unknownParameters));
-    }
-
-    return parameters;
-  };
+  }
 
   private async fillContextParameters(
-    requestedParameters: Set<string>,
+    requestedContextParameters: Set<string>,
   ): Promise<Record<string, ContextParam>> {
-    // Now, we can safely add all the parameters
-    const parameters: Record<string, ContextParam> = {};
-
-    // Fill in predefined context parameters
-    if (requestedParameters.has(USER_ADDRESS_PARAM)) {
-      if (!this.walletAuthProvider) {
-        throw new Error(ERR_SIGNER_REQUIRED);
-      }
-      parameters[USER_ADDRESS_PARAM] =
-        await this.walletAuthProvider.getOrCreateWalletSignature();
-      // Remove from requested parameters
-      requestedParameters.delete(USER_ADDRESS_PARAM);
-    }
-
-    // Fill in custom parameters
-    for (const key in this.customParameters) {
-      parameters[key] = this.customParameters[key];
+    const parameters = await this.fillAuthContextParameters(
+      requestedContextParameters,
+    );
+    for (const key in this.customContextParameters) {
+      parameters[key] = this.customContextParameters[key];
     }
     return parameters;
   }
 
-  private isContextParameter(param: unknown): boolean {
-    return !!String(param).match(CONTEXT_PARAM_REGEXP);
+  private validateAuthProviders(): void {
+    for (const param of this.requestedContextParameters) {
+      // If it's not a user address parameter, we can skip
+      if (!USER_ADDRESS_PARAMS.includes(param)) {
+        continue;
+      }
+
+      // we don't have a corresponding auth provider, we have a problem
+      if (!this.authProviders[param]) {
+        throw new Error(ERR_AUTH_PROVIDER_REQUIRED(param));
+      }
+    }
   }
 
-  private findRequestedParameters(condition: ConditionProps) {
-    // First, we want to find all the parameters we need to add
-    const requestedParameters = new Set<string>();
+  private async fillAuthContextParameters(
+    requestedParameters: Set<string>,
+  ): Promise<Record<string, ContextParam>> {
+    const entries = await Promise.all(
+      [...requestedParameters]
+        .filter((param) => USER_ADDRESS_PARAMS.includes(param))
+        .map(async (param) => {
+          const maybeAuthProvider = this.authProviders[param];
+          // TODO: Throw here instead of validating in the constructor?
+          // TODO: Hide getOrCreateAuthSignature behind a more generic interface
+          return [param, await maybeAuthProvider!.getOrCreateAuthSignature()];
+        }),
+    );
+    return Object.fromEntries(entries);
+  }
 
-    // Search conditions for parameters
-    // Check return value test
-    if (condition.returnValueTest) {
-      const rvt = condition.returnValueTest.value;
-      if (this.isContextParameter(rvt)) {
-        requestedParameters.add(rvt);
-      }
+  private validateCustomContextParameter(customParam: string): void {
+    if (!ConditionContext.isContextParameter(customParam)) {
+      throw new Error(ERR_INVALID_CUSTOM_PARAM(customParam));
     }
 
-    // Check condition parameters
-    for (const param of condition.parameters ?? []) {
-      if (this.isContextParameter(param)) {
-        requestedParameters.add(param);
-      }
+    if (AUTOMATICALLY_INJECTED_CONTEXT_PARAMS.includes(customParam)) {
+      throw new Error(ERR_AUTO_INJECTED_CONTEXT_PARAM(customParam));
     }
 
-    // If it's a compound condition, check operands
-    if (condition.conditionType === CompoundConditionType) {
-      for (const key in condition.operands) {
-        const innerParams = this.findRequestedParameters(
-          condition.operands[key],
+    if (RESERVED_CONTEXT_PARAMS.includes(customParam)) {
+      throw new Error(ERR_RESERVED_PARAM(customParam));
+    }
+
+    if (!this.requestedContextParameters.has(customParam)) {
+      throw new Error(ERR_UNKNOWN_CUSTOM_CONTEXT_PARAM(customParam));
+    }
+  }
+
+  private static isContextParameter(param: unknown): boolean {
+    return !!String(param).match(CONTEXT_PARAM_FULL_MATCH_REGEXP);
+  }
+
+  private static findContextParameter(value: unknown): Set<string> {
+    const includedContextVars = new Set<string>();
+
+    // value not set
+    if (!value) {
+      return includedContextVars;
+    }
+
+    if (typeof value === 'string') {
+      if (this.isContextParameter(value)) {
+        // entire string is context parameter
+        includedContextVars.add(String(value));
+      } else {
+        // context var could be substring; find all matches
+        const contextVarMatches = value.match(
+          // RegExp with 'g' is stateful, so new instance needed every time
+          new RegExp(CONTEXT_PARAM_REGEXP.source, 'g'),
         );
-        for (const param of innerParams) {
-          requestedParameters.add(param);
+        if (contextVarMatches) {
+          for (const match of contextVarMatches) {
+            includedContextVars.add(match);
+          }
         }
       }
+    } else if (Array.isArray(value)) {
+      // array
+      value.forEach((subValue) => {
+        const contextVarsForValue = this.findContextParameter(subValue);
+        contextVarsForValue.forEach((contextVar) => {
+          includedContextVars.add(contextVar);
+        });
+      });
+    } else if (typeof value === 'object') {
+      // dictionary (Record<string, T> - complex object eg. Condition, ConditionVariable, ReturnValueTest etc.)
+      for (const [, entry] of Object.entries(value)) {
+        const contextVarsForValue = this.findContextParameter(entry);
+        contextVarsForValue.forEach((contextVar) => {
+          includedContextVars.add(contextVar);
+        });
+      }
     }
+
+    return includedContextVars;
+  }
+
+  private static findContextParameters(condition: ConditionProps) {
+    // find all the context variables we need
+    const requestedParameters = new Set<string>();
+
+    // iterate through all properties in ConditionProps
+    const properties = Object.keys(condition) as (keyof typeof condition)[];
+    properties.forEach((prop) => {
+      this.findContextParameter(condition[prop]).forEach((contextVar) => {
+        if (!AUTOMATICALLY_INJECTED_CONTEXT_PARAMS.includes(contextVar)) {
+          requestedParameters.add(contextVar);
+        }
+      });
+    });
 
     return requestedParameters;
   }
 
+  public addCustomContextParameterValues(
+    customContextParameters: Record<string, CustomContextParam>,
+  ) {
+    Object.keys(customContextParameters).forEach((key) => {
+      this.validateCustomContextParameter(key);
+      this.customContextParameters[key] = customContextParameters[key];
+    });
+  }
+
+  public addAuthProvider(contextParam: string, authProvider: AuthProvider) {
+    if (!(contextParam in EXPECTED_AUTH_PROVIDER_TYPES)) {
+      throw new Error(
+        ERR_AUTH_PROVIDER_NOT_NEEDED_FOR_CONTEXT_PARAM(contextParam),
+      );
+    }
+    const expectedTypes = EXPECTED_AUTH_PROVIDER_TYPES[contextParam];
+    if (!expectedTypes.some((type) => authProvider instanceof type)) {
+      throw new Error(
+        ERR_INVALID_AUTH_PROVIDER_TYPE(contextParam, typeof authProvider),
+      );
+    }
+
+    this.authProviders[contextParam] = authProvider;
+  }
   public async toJson(): Promise<string> {
-    const parameters = await this.toObj();
+    const parameters = await this.toContextParameters();
     return toJSON(parameters);
   }
 
-  public withCustomParams(
-    params: Record<string, CustomContextParam>,
-  ): ConditionContext {
-    return new ConditionContext(
-      this.provider,
-      this.condition,
-      params,
-      this.signer,
-    );
-  }
-
-  public async toWASMContext(): Promise<Context> {
+  public async toCoreContext(): Promise<CoreContext> {
     const asJson = await this.toJson();
-    return new Context(asJson);
+    return new CoreContext(asJson);
   }
 
-  public static fromConditions(
-    provider: ethers.providers.Provider,
-    conditions: WASMConditions,
-    signer?: ethers.Signer,
-    customParameters?: Record<string, CustomContextParam>,
-  ): ConditionContext {
-    return new ConditionContext(
-      provider,
-      ConditionExpression.fromWASMConditions(conditions).condition,
-      customParameters,
-      signer,
+  public toContextParameters = async (): Promise<
+    Record<string, ContextParam>
+  > => {
+    this.validateAuthProviders();
+    const parameters = await this.fillContextParameters(
+      this.requestedContextParameters,
     );
+    this.validateNoMissingContextParameters(parameters);
+    return parameters;
+  };
+
+  public static fromMessageKit(
+    messageKit: ThresholdMessageKit,
+  ): ConditionContext {
+    const conditionExpr = ConditionExpression.fromCoreConditions(
+      messageKit.acp.conditions,
+    );
+    return new ConditionContext(conditionExpr.condition);
+  }
+
+  public static async forSigningCohort(
+    provider: ethers.providers.JsonRpcProvider,
+    domain: Domain,
+    cohortId: number,
+    chainId: number,
+  ): Promise<ConditionContext> {
+    // get signing condition from SigningCoordinator contract
+    const cohortConditionHex =
+      await SigningCoordinatorAgent.getSigningCohortConditions(
+        provider,
+        domain,
+        cohortId,
+        chainId,
+      );
+
+    // Convert hex string to UTF-8 JSON string
+    const cohortConditionJson = ethers.utils.toUtf8String(cohortConditionHex);
+
+    const cohortCondition = new CoreConditions(cohortConditionJson);
+    const conditionExpr =
+      ConditionExpression.fromCoreConditions(cohortCondition);
+    return new ConditionContext(conditionExpr.condition);
   }
 }

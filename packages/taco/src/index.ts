@@ -3,12 +3,13 @@ export {
   Domain,
   domains,
   fromBytes,
-  getPorterUri,
+  getPorterUris,
   initialize,
   toBytes,
   toHexString,
 } from '@nucypher/shared';
 
 export * as conditions from './conditions';
-// Expose registerEncrypters from taco API (#324)
-export { decrypt, encrypt, encryptWithPublicKey, isAuthorized } from './taco';
+
+export { setSigningCohortConditions, signUserOp } from './sign';
+export { decrypt, encrypt, encryptWithPublicKey } from './taco';

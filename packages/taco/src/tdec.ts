@@ -1,7 +1,6 @@
 import {
   AccessControlPolicy,
   combineDecryptionSharesSimple,
-  Context,
   DecryptionShareSimple,
   DkgPublicKey,
   EncryptedThresholdDecryptionRequest,
@@ -24,7 +23,8 @@ import { ethers } from 'ethers';
 import { arrayify, keccak256 } from 'ethers/lib/utils';
 
 import { ConditionExpression } from './conditions/condition-expr';
-import { ConditionContext, CustomContextParam } from './conditions/context';
+import { ConditionContext } from './conditions/context';
+import { DkgClient } from './dkg';
 
 const ERR_DECRYPTION_FAILED = (errors: unknown) =>
   `Threshold of responses not met; TACo decryption failed with errors: ${JSON.stringify(
@@ -44,7 +44,7 @@ export const encryptMessage = async (
   const [ciphertext, authenticatedData] = encryptForDkg(
     plaintext instanceof Uint8Array ? plaintext : toBytes(plaintext),
     encryptingKey,
-    conditions.toWASMConditions(),
+    conditions.toCoreCondition(),
   );
 
   const headerHash = keccak256(ciphertext.header.toBytes());
@@ -61,24 +61,18 @@ export const encryptMessage = async (
 export const retrieveAndDecrypt = async (
   provider: ethers.providers.Provider,
   domain: Domain,
-  porterUri: string,
+  porter: PorterClient,
   thresholdMessageKit: ThresholdMessageKit,
   ritualId: number,
-  sharesNum: number,
-  threshold: number,
-  signer?: ethers.Signer,
-  customParameters?: Record<string, CustomContextParam>,
+  context?: ConditionContext,
 ): Promise<Uint8Array> => {
   const decryptionShares = await retrieve(
     provider,
     domain,
-    porterUri,
+    porter,
     thresholdMessageKit,
     ritualId,
-    sharesNum,
-    threshold,
-    signer,
-    customParameters,
+    context,
   );
   const sharedSecret = combineDecryptionSharesSimple(decryptionShares);
   return thresholdMessageKit.decryptWithSharedSecret(sharedSecret);
@@ -88,39 +82,35 @@ export const retrieveAndDecrypt = async (
 const retrieve = async (
   provider: ethers.providers.Provider,
   domain: Domain,
-  porterUri: string,
+  porter: PorterClient,
   thresholdMessageKit: ThresholdMessageKit,
   ritualId: number,
-  sharesNum: number,
-  threshold: number,
-  signer?: ethers.Signer,
-  customParameters?: Record<string, CustomContextParam>,
+  context?: ConditionContext,
 ): Promise<DecryptionShareSimple[]> => {
+  const ritual = await DkgClient.getActiveRitual(provider, domain, ritualId);
+
   const dkgParticipants = await DkgCoordinatorAgent.getParticipants(
     provider,
     domain,
     ritualId,
-    sharesNum,
+    ritual.sharesNum,
   );
-  const wasmContext = await ConditionContext.fromConditions(
-    provider,
-    thresholdMessageKit.acp.conditions,
-    signer,
-    customParameters,
-  ).toWASMContext();
+  const conditionContext = context
+    ? context
+    : ConditionContext.fromMessageKit(thresholdMessageKit);
+
   const { sharedSecrets, encryptedRequests } = await makeDecryptionRequests(
     ritualId,
-    wasmContext,
+    conditionContext,
     dkgParticipants,
     thresholdMessageKit,
   );
 
-  const porter = new PorterClient(porterUri);
   const { encryptedResponses, errors } = await porter.tacoDecrypt(
     encryptedRequests,
-    threshold,
+    ritual.threshold,
   );
-  if (Object.keys(encryptedResponses).length < threshold) {
+  if (Object.keys(encryptedResponses).length < ritual.threshold) {
     throw new Error(ERR_DECRYPTION_FAILED(errors));
   }
 
@@ -148,19 +138,20 @@ const makeDecryptionShares = (
 
 const makeDecryptionRequests = async (
   ritualId: number,
-  wasmContext: Context,
+  conditionContext: ConditionContext,
   dkgParticipants: Array<DkgParticipant>,
   thresholdMessageKit: ThresholdMessageKit,
 ): Promise<{
   sharedSecrets: Record<string, SessionSharedSecret>;
   encryptedRequests: Record<string, EncryptedThresholdDecryptionRequest>;
 }> => {
+  const coreContext = await conditionContext.toCoreContext();
   const decryptionRequest = new ThresholdDecryptionRequest(
     ritualId,
     FerveoVariant.simple,
     thresholdMessageKit.ciphertextHeader,
     thresholdMessageKit.acp,
-    wasmContext,
+    coreContext,
   );
 
   const ephemeralSessionKey = makeSessionKey();

@@ -5,12 +5,11 @@ import {
   ThresholdMessageKit,
 } from '@nucypher/nucypher-core';
 import {
-  ChecksumAddress,
   DkgCoordinatorAgent,
   Domain,
   fromHexString,
-  getPorterUri,
-  GlobalAllowListAgent,
+  getPorterUris,
+  PorterClient,
   toBytes,
 } from '@nucypher/shared';
 import { ethers } from 'ethers';
@@ -18,7 +17,7 @@ import { keccak256 } from 'ethers/lib/utils';
 
 import { Condition } from './conditions/condition';
 import { ConditionExpression } from './conditions/condition-expr';
-import { CustomContextParam } from './conditions/context';
+import { ConditionContext } from './conditions/context';
 import { DkgClient } from './dkg';
 import { retrieveAndDecrypt } from './tdec';
 
@@ -102,7 +101,7 @@ export const encryptWithPublicKey = async (
   const [ciphertext, authenticatedData] = encryptForDkg(
     message,
     dkgPublicKey,
-    conditionExpr.toWASMConditions(),
+    conditionExpr.toCoreCondition(),
   );
 
   const headerHash = keccak256(ciphertext.header.toBytes());
@@ -124,11 +123,9 @@ export const encryptWithPublicKey = async (
  * @param {Domain} domain - Represents the logical network in which the decryption will be performed.
  * Must match the `ritualId`.
  * @param {ThresholdMessageKit} messageKit - The kit containing the message to be decrypted
- * @param {string} [porterUri] - The URI for the Porter service. If not provided, a value will be obtained
+ * @param {ConditionContext} context - Optional context data used for decryption time values for the condition(s) within the `messageKit`.
+ * @param {string[]} [porterUris] - Optional URI(s) for the Porter service. If not provided, a value will be obtained
  * from the Domain
- * @param {ethers.Signer} [signer] - An optional signer for the decryption
- * @param {Record<string, CustomContextParam>} [customParameters] - Optional custom parameters that may be required
- * depending on the condition used
  *
  * @returns {Promise<Uint8Array>} Returns Promise that resolves with a decrypted message
  *
@@ -139,71 +136,25 @@ export const decrypt = async (
   provider: ethers.providers.Provider,
   domain: Domain,
   messageKit: ThresholdMessageKit,
-  porterUri?: string,
-  signer?: ethers.Signer,
-  customParameters?: Record<string, CustomContextParam>,
+  context?: ConditionContext,
+  porterUris?: string[],
 ): Promise<Uint8Array> => {
-  if (!porterUri) {
-    porterUri = getPorterUri(domain);
-  }
+  const porterUrisFull: string[] = porterUris
+    ? porterUris
+    : await getPorterUris(domain);
+  const porter = new PorterClient(porterUrisFull);
 
   const ritualId = await DkgCoordinatorAgent.getRitualIdFromPublicKey(
     provider,
     domain,
     messageKit.acp.publicKey,
   );
-  const ritual = await DkgClient.getActiveRitual(provider, domain, ritualId);
   return retrieveAndDecrypt(
     provider,
     domain,
-    porterUri,
+    porter,
     messageKit,
     ritualId,
-    ritual.sharesNum,
-    ritual.threshold,
-    signer,
-    customParameters,
-  );
-};
-
-/**
- * Checks if the encryption from the provided messageKit is authorized for the specified ritual.
- *
- * @export
- * @param {ethers.providers.Provider} provider - Instance of ethers provider which is used to interact with
- * your selected network.
- * @param {Domain} domain - The domain which was used to encrypt the network. Must match the `ritualId`.
- * @param {ThresholdMessageKit} messageKit - The encrypted message kit to be checked.
- * @param {number} ritualId - The ID of the DKG Ritual under which the messageKit was supposedly encrypted.
- *
- * @returns {Promise<boolean>} Returns a Promise that resolves with the authorization status.
- * True if authorized, false otherwise
- */
-export const isAuthorized = async (
-  provider: ethers.providers.Provider,
-  domain: Domain,
-  messageKit: ThresholdMessageKit,
-  ritualId: number,
-) =>
-  DkgCoordinatorAgent.isEncryptionAuthorized(
-    provider,
-    domain,
-    ritualId,
-    messageKit,
-  );
-
-export const registerEncrypters = async (
-  provider: ethers.providers.Provider,
-  signer: ethers.Signer,
-  domain: Domain,
-  ritualId: number,
-  encrypters: ChecksumAddress[],
-): Promise<void> => {
-  await GlobalAllowListAgent.registerEncrypters(
-    provider,
-    signer,
-    domain,
-    ritualId,
-    encrypters,
+    context,
   );
 };
