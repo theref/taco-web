@@ -1,68 +1,65 @@
+import { Conditions as CoreConditions } from '@nucypher/nucypher-core';
 import { objectEquals } from '@nucypher/shared';
 import { z } from 'zod';
 
-import { toJSON } from '../utils';
+import { fromJSON, toJSON } from '../utils';
 
-import { USER_ADDRESS_PARAMS } from './const';
+import { conditionSchema, ConditionProps, VERSION } from './schema';
 
-export { baseConditionSchema } from './schemas/common';
-
-type ConditionSchema = z.ZodSchema;
-export type ConditionProps = z.infer<ConditionSchema>;
+export { conditionSchema, ConditionProps, VERSION } from './schema';
 
 export const ERR_INVALID_CONDITION = (error: z.ZodError) =>
   `Invalid condition: ${JSON.stringify(error.issues)}`;
 
 export class Condition {
-  constructor(
-    public readonly schema: ConditionSchema,
-    public readonly value: ConditionProps,
-  ) {
-    const { data, error } = Condition.validate(schema, value);
-    if (error) {
-      throw new Error(ERR_INVALID_CONDITION(error));
+  public readonly value: ConditionProps;
+
+  constructor(props: Omit<ConditionProps, 'version'>) {
+    const result = conditionSchema.safeParse({ version: VERSION, ...props });
+    if (!result.success) {
+      throw new Error(ERR_INVALID_CONDITION(result.error));
     }
-    this.value = data;
+    this.value = result.data;
   }
 
-  public static validate(
-    schema: ConditionSchema,
-    value: ConditionProps,
-  ): {
-    data?: ConditionProps;
-    error?: z.ZodError;
-  } {
-    const result = schema.safeParse(value);
-    if (result.success) {
-      return { data: result.data };
-    }
-    return { error: result.error };
+  public get version(): string {
+    return this.value.version;
   }
 
-  // TODO: Fix this method and add a test for it
-  public findParamWithAuthentication(): string | null {
-    const serialized = toJSON(this.value);
-    for (const param of USER_ADDRESS_PARAMS) {
-      if (serialized.includes(param)) {
-        return param;
-      }
-    }
-    return null;
-  }
-
-  public requiresAuthentication(): boolean {
-    return Boolean(this.findParamWithAuthentication());
+  public get inputs(): string[] {
+    return this.value.inputs ?? [];
   }
 
   public toObj(): ConditionProps {
-    const { data, error } = Condition.validate(this.schema, this.value);
-    if (error) {
-      throw new Error(ERR_INVALID_CONDITION(error));
-    }
-    return data;
+    return { ...this.value };
   }
 
-  public equals(other: Condition) {
+  public toJson(): string {
+    return toJSON(this.toObj());
+  }
+
+  public toCoreCondition(): CoreConditions {
+    return new CoreConditions(this.toJson());
+  }
+
+  public static fromObj(obj: Record<string, unknown>): Condition {
+    const result = conditionSchema.safeParse(obj);
+    if (!result.success) {
+      throw new Error(ERR_INVALID_CONDITION(result.error));
+    }
+    const { version: _, ...rest } = result.data;
+    return new Condition(rest);
+  }
+
+  public static fromJSON(json: string): Condition {
+    return Condition.fromObj(fromJSON(json));
+  }
+
+  public static fromCoreConditions(conditions: CoreConditions): Condition {
+    return Condition.fromJSON(conditions.toString());
+  }
+
+  public equals(other: Condition): boolean {
     return objectEquals(this.toObj(), other.toObj());
   }
 }
