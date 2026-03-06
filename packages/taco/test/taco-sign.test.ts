@@ -22,10 +22,7 @@ import { fakePorterUri } from '@nucypher/test-utils';
 import { ethers } from 'ethers';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ContractCondition } from '../src/conditions/base/contract';
-import { RpcCondition } from '../src/conditions/base/rpc';
-import { CompoundCondition } from '../src/conditions/compound-condition';
-import { ConditionExpression } from '../src/conditions/condition-expr';
+import { Condition } from '../src/conditions/condition';
 import { setSigningCohortConditions, signUserOp } from '../src/sign';
 
 import { mockMakeSessionKey } from './test-utils';
@@ -761,19 +758,13 @@ describe('TACo Signing', () => {
       const chainId = 11155111;
       const mockTransaction = { hash: '0x123' } as ethers.ContractTransaction;
 
-      // Create a real ConditionExpression with RPC condition
-      const rpcCondition = new RpcCondition({
-        chain: chainId,
-        method: 'eth_getBalance',
-        parameters: [':userAddress', 'latest'],
-        returnValueTest: {
-          comparator: '>',
-          value: BigInt(0),
-        },
+      const condition = new Condition({
+        wasm: 'AGFzbQEAAAA=',
+        name: 'test-condition',
+        inputs: [':userAddress'],
       });
 
-      const conditionExpression = new ConditionExpression(rpcCondition);
-      const expectedJson = conditionExpression.toJson();
+      const expectedJson = condition.toJson();
       const expectedBytes = ethers.utils.toUtf8Bytes(expectedJson);
 
       setSigningCohortConditionsSpy.mockResolvedValue(mockTransaction);
@@ -781,66 +772,7 @@ describe('TACo Signing', () => {
       const result = await setSigningCohortConditions(
         mockProvider,
         domain,
-        rpcCondition,
-        cohortId,
-        chainId,
-        mockSigner,
-      );
-
-      expect(setSigningCohortConditionsSpy).toHaveBeenCalledWith(
-        mockProvider,
-        domain,
-        cohortId,
-        chainId,
-        expectedBytes,
-        mockSigner,
-      );
-      expect(result).toBe(mockTransaction);
-    });
-
-    it('should handle complex condition expressions', async () => {
-      const domain = 'lynx';
-      const cohortId = 1;
-      const chainId = 11155111;
-      const mockTransaction = { hash: '0x456' } as ethers.ContractTransaction;
-
-      // Create a real compound ConditionExpression
-      const rpcCondition = new RpcCondition({
-        chain: chainId,
-        method: 'eth_getBalance',
-        parameters: [':userAddress', 'latest'],
-        returnValueTest: {
-          comparator: '>',
-          value: BigInt(0),
-        },
-      });
-
-      const contractCondition = new ContractCondition({
-        contractAddress: '0x1234567890123456789012345678901234567890',
-        chain: chainId,
-        standardContractType: 'ERC20',
-        method: 'balanceOf',
-        parameters: [':userAddress'],
-        returnValueTest: {
-          comparator: '>=',
-          value: BigInt(1000),
-        },
-      });
-
-      const compoundCondition = CompoundCondition.and([
-        rpcCondition,
-        contractCondition,
-      ]);
-      const conditionExpression = new ConditionExpression(compoundCondition);
-      const expectedJson = conditionExpression.toJson();
-      const expectedBytes = ethers.utils.toUtf8Bytes(expectedJson);
-
-      setSigningCohortConditionsSpy.mockResolvedValue(mockTransaction);
-
-      const result = await setSigningCohortConditions(
-        mockProvider,
-        domain,
-        compoundCondition,
+        condition,
         cohortId,
         chainId,
         mockSigner,
@@ -862,19 +794,12 @@ describe('TACo Signing', () => {
       const cohortId = 999;
       const chainId = 11155111;
 
-      // Create a real ConditionExpression
-      const rpcCondition = new RpcCondition({
-        chain: chainId,
-        method: 'eth_getBalance',
-        parameters: [':userAddress', 'latest'],
-        returnValueTest: {
-          comparator: '>',
-          value: BigInt(0),
-        },
+      const condition = new Condition({
+        wasm: 'AGFzbQEAAAA=',
+        name: 'error-test',
       });
 
-      const conditionExpression = new ConditionExpression(rpcCondition);
-      const expectedJson = conditionExpression.toJson();
+      const expectedJson = condition.toJson();
       const expectedBytes = ethers.utils.toUtf8Bytes(expectedJson);
 
       setSigningCohortConditionsSpy.mockRejectedValue(
@@ -885,7 +810,7 @@ describe('TACo Signing', () => {
         setSigningCohortConditions(
           mockProvider,
           domain,
-          rpcCondition,
+          condition,
           cohortId,
           chainId,
           mockSigner,
