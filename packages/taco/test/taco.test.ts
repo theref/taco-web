@@ -13,7 +13,6 @@ import {
   fakeTDecFlow,
   mockGetRitualIdFromPublicKey,
   mockTacoDecrypt,
-  TEST_CHAIN_ID,
   TEST_SIWE_PARAMS,
 } from '@nucypher/test-utils';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -23,6 +22,7 @@ import { conditions, domains, toBytes } from '../src';
 import { ConditionContext } from '../src/conditions/context';
 
 import {
+  fakeCondition,
   fakeDkgRitual,
   mockDkgParticipants,
   mockGetActiveRitual,
@@ -32,11 +32,7 @@ import {
 
 // Shared test variables
 const message = 'this is a secret';
-const ownsNFT = new conditions.predefined.erc721.ERC721Ownership({
-  contractAddress: '0x1e988ba4692e52Bc50b375bcC8585b95c48AaD77',
-  parameters: [3591],
-  chain: TEST_CHAIN_ID,
-});
+const testCondition = fakeCondition();
 
 describe('taco', () => {
   beforeAll(async () => {
@@ -54,7 +50,7 @@ describe('taco', () => {
       provider,
       domains.DEVNET,
       message,
-      ownsNFT,
+      testCondition,
       mockedDkg.ritualId,
       signer,
     );
@@ -103,37 +99,33 @@ describe('taco', () => {
     expect(getRitualIdFromPublicKey).toHaveBeenCalled();
     expect(getRitualSpy).toHaveBeenCalled();
     expect(decryptSpy).toHaveBeenCalled();
-  }, 9000); // test timeout 9s (TODO: not sure why this test takes so long on CI)
+  }, 9000);
 
-  it('exposes requested parameters', async () => {
+  it('exposes declared inputs', async () => {
+    const conditionWithInputs = new conditions.Condition({
+      wasm: 'AGFzbQEAAAA=',
+      name: 'test',
+      inputs: [':userAddress', ':nftId'],
+    });
+
     const mockedDkg = fakeDkgFlow(FerveoVariant.precomputed, 0, 4, 4);
     const mockedDkgRitual = fakeDkgRitual(mockedDkg);
     const provider = fakeProvider(aliceSecretKeyBytes);
     const signer = provider.getSigner();
-    const getFinalizedRitualSpy = mockGetActiveRitual(mockedDkgRitual);
-
-    const customParamKey = ':nftId';
-    const ownsNFTWithCustomParams =
-      new conditions.predefined.erc721.ERC721Ownership({
-        contractAddress: '0x1e988ba4692e52Bc50b375bcC8585b95c48AaD77',
-        parameters: [customParamKey],
-        chain: TEST_CHAIN_ID,
-      });
+    mockGetActiveRitual(mockedDkgRitual);
 
     const messageKit = await taco.encrypt(
       provider,
       domains.DEVNET,
       message,
-      ownsNFTWithCustomParams,
+      conditionWithInputs,
       mockedDkg.ritualId,
       signer,
     );
-    expect(getFinalizedRitualSpy).toHaveBeenCalled();
 
     const conditionContext = ConditionContext.fromMessageKit(messageKit);
-    const requestedParameters = conditionContext.requestedContextParameters;
-    expect(requestedParameters).toEqual(
-      new Set([customParamKey, USER_ADDRESS_PARAM_DEFAULT]),
+    expect(conditionContext.declaredInputs).toEqual(
+      new Set([':userAddress', ':nftId']),
     );
   });
 });

@@ -16,7 +16,6 @@ import { ethers } from 'ethers';
 import { keccak256 } from 'ethers/lib/utils';
 
 import { Condition } from './conditions/condition';
-import { ConditionExpression } from './conditions/condition-expr';
 import { ConditionContext } from './conditions/context';
 import { DkgClient } from './dkg';
 import { retrieveAndDecrypt } from './tdec';
@@ -96,12 +95,10 @@ export const encryptWithPublicKey = async (
     message = toBytes(message);
   }
 
-  const conditionExpr = new ConditionExpression(condition);
-
   const [ciphertext, authenticatedData] = encryptForDkg(
     message,
     dkgPublicKey,
-    conditionExpr.toCoreCondition(),
+    condition.toCoreCondition(),
   );
 
   const headerHash = keccak256(ciphertext.header.toBytes());

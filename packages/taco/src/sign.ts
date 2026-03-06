@@ -24,7 +24,6 @@ import {
 import { ethers } from 'ethers';
 
 import { Condition } from './conditions/condition';
-import { ConditionExpression } from './conditions/condition-expr';
 import { ConditionContext } from './conditions/context';
 
 const ERR_INSUFFICIENT_SIGNATURES = (errors: unknown) =>
@@ -226,9 +225,7 @@ export async function setSigningCohortConditions(
   chainId: number,
   signer: ethers.Signer,
 ): Promise<ethers.ContractTransaction> {
-  // Convert Condition to ConditionExpression, then to JSON, then to bytes
-  const conditionExpression = new ConditionExpression(conditions);
-  const conditionsJson = conditionExpression.toJson();
+  const conditionsJson = conditions.toJson();
   const conditionsBytes = ethers.utils.toUtf8Bytes(conditionsJson);
 
   // Set conditions on the SigningCoordinator contract

@@ -33,9 +33,9 @@ We also provide demos of TACo applications:
 
 These examples showcase integration with web applications utilizing an end-to-end flow of creating encrypted data with associated conditions and enacting access-controlled decryption.
 
-## Condition Schemas
+## WASM Conditions
 
-Learn more about the available condition schemas and their properties. You may check the [condition schema documentation](./packages/taco/schema-docs/condition-schemas.md) for detailed information on each schema type.
+Conditions are now defined as WASM modules compiled with [taco-pdk](https://github.com/nucypher/taco-pdk). See the [tutorial](https://docs.taco.build/taco-integration/) for details.
 
 # Contributing
 

@@ -40,19 +40,12 @@ const runExample = async () => {
 
   console.log('Encrypting message...');
   const message = toBytes('this is a secret');
-  const hasPositiveBalance = new conditions.base.rpc.RpcCondition({
-    chain: 80002,
-    method: 'eth_getBalance',
-    parameters: [':userAddress', 'latest'],
-    returnValueTest: {
-      comparator: '>',
-      value: 0,
-    },
+  // Build WASM conditions with taco-pdk: https://github.com/nucypher/taco-pdk
+  const hasPositiveBalance = new conditions.Condition({
+    wasm: 'AGFzbQEAAAA=', // Replace with your compiled WASM bytecode (base64)
+    name: 'positive-balance',
+    inputs: [':userAddress'],
   });
-  console.assert(
-    hasPositiveBalance.requiresAuthentication(),
-    'Condition requires authentication',
-  );
   const messageKit = await encrypt(
     provider,
     domain,

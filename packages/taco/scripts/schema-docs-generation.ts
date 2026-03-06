@@ -71,12 +71,7 @@ export async function zod2md(options: Options): Promise<string> {
 }
 
 // Define the directory paths
-// The file or the directory with .ts file(s)
-// could be something like './packages/taco/src/conditions/schemas/**/*.ts' or './packages/taco/src/conditions/schemas/**/file-name.ts'
-// However, if the files contains LazyZod types, the generation would not be very organized.
-// So, just every related file should be exported from the same file (similar to the usual exporting from index.js).
-// Note: the order of the exported Zod objects in the specified file will dictate the order of the generated markdown.
-const schemaSource = './src/conditions/schemas/export-for-zod-doc-gen.ts';
+const schemaSource = './src/conditions/schema.ts';
 
 const schemaOutputDirectory = './schema-docs/'; // The directory where Markdown will be saved
 const schemaOutputFile = 'condition-schemas.md'; // File name where the Markdown will be saved

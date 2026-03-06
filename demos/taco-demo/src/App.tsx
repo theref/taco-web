@@ -91,9 +91,9 @@ export default function App() {
     // create condition context
     const conditionContext = conditions.context.ConditionContext.fromMessageKit(encryptedMessage);
 
-    // illustrative optional example of checking what context parameters are required
+    // illustrative optional example of checking what inputs are declared
     if (
-      conditionContext.requestedContextParameters.has(USER_ADDRESS_PARAM_DEFAULT)
+      conditionContext.declaredInputs.has(USER_ADDRESS_PARAM_DEFAULT)
     ) {
       // add authentication for ":userAddress" in condition
       const authProvider = new EIP4361AuthProvider(
