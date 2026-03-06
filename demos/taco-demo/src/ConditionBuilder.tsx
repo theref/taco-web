@@ -3,19 +3,17 @@ import { useEthers } from '@usedapp/core';
 import React, { useState } from 'react';
 
 interface Props {
-  condition?: conditions.condition.Condition | undefined;
-  setConditions: (value: conditions.condition.Condition) => void;
+  condition?: conditions.Condition | undefined;
+  setConditions: (value: conditions.Condition) => void;
   enabled: boolean;
 }
 
-const rpcCondition = new conditions.base.rpc.RpcCondition({
-  chain: 80002,
-  method: 'eth_getBalance',
-  parameters: [':userAddress'],
-  returnValueTest: {
-    comparator: '>',
-    value: 0,
-  },
+// Build your own WASM conditions with taco-pdk:
+// https://github.com/nucypher/taco-pdk
+const defaultCondition = new conditions.Condition({
+  wasm: 'AGFzbQEAAAA=', // Replace with your compiled WASM bytecode (base64)
+  name: 'my-condition',
+  inputs: [':userAddress'],
 });
 
 export const ConditionBuilder = ({
@@ -25,7 +23,7 @@ export const ConditionBuilder = ({
 }: Props) => {
   const { library } = useEthers();
 
-  const demoCondition = JSON.stringify((condition ?? rpcCondition).toObj());
+  const demoCondition = JSON.stringify((condition ?? defaultCondition).toObj());
   const [conditionString, setConditionString] = useState(demoCondition);
 
   if (!enabled || !library) {
@@ -54,15 +52,13 @@ export const ConditionBuilder = ({
 
   const conditionJSONInput = makeInput(
     setConditionString,
-    JSON.stringify(rpcCondition.toObj()),
+    JSON.stringify(defaultCondition.toObj()),
   );
 
   const onCreateCondition = (e: any) => {
     e.preventDefault();
     setConditions(
-      conditions.ConditionFactory.conditionFromProps(
-        JSON.parse(conditionString),
-      ),
+      conditions.Condition.fromObj(JSON.parse(conditionString)),
     );
   };
 

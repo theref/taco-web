@@ -59,19 +59,12 @@ const encryptToBytes = async (messageString: string) => {
   const message = toBytes(messageString);
   console.log(format('Encrypting message ("%s") ...', messageString));
 
-  const hasPositiveBalance = new conditions.base.rpc.RpcCondition({
-    chain: chainId,
-    method: 'eth_getBalance',
-    parameters: [':userAddress', 'latest'],
-    returnValueTest: {
-      comparator: '>=',
-      value: 0,
-    },
+  // Build WASM conditions with taco-pdk: https://github.com/nucypher/taco-pdk
+  const hasPositiveBalance = new conditions.Condition({
+    wasm: 'AGFzbQEAAAA=', // Replace with your compiled WASM bytecode (base64)
+    name: 'positive-balance',
+    inputs: [':userAddress'],
   });
-  console.assert(
-    hasPositiveBalance.requiresAuthentication(),
-    'Condition requires authentication',
-  );
 
   const messageKit = await encrypt(
     provider,
@@ -101,11 +94,8 @@ const decryptFromBytes = async (encryptedBytes: Uint8Array) => {
   const conditionContext =
     conditions.context.ConditionContext.fromMessageKit(messageKit);
 
-  // illustrative optional example of checking what context parameters are required
-  // unnecessary if you already know what the condition contains
-  if (
-    conditionContext.requestedContextParameters.has(USER_ADDRESS_PARAM_DEFAULT)
-  ) {
+  // Check declared inputs to see if auth is needed
+  if (conditionContext.declaredInputs.has(USER_ADDRESS_PARAM_DEFAULT)) {
     const authProvider = new EIP4361AuthProvider(
       provider,
       consumerSigner,

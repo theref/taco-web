@@ -1,12 +1,25 @@
 import { conditions } from '@nucypher/taco';
-import { Sepolia, useEthers } from '@usedapp/core';
+import { useEthers } from '@usedapp/core';
 import React, { useState } from 'react';
 
 interface Props {
-  condition?: conditions.condition.Condition | undefined;
-  setConditions: (value: conditions.condition.Condition) => void;
+  condition?: conditions.Condition | undefined;
+  setConditions: (value: conditions.Condition) => void;
   enabled: boolean;
 }
+
+// Build NFT ownership conditions with taco-pdk:
+// https://github.com/nucypher/taco-pdk
+//
+// Example Rust condition checking ERC721 ownership:
+//   use taco_pdk::prelude::*;
+//   #[plugin_fn]
+//   pub fn evaluate(_: ()) -> FnResult<Vec<u8>> {
+//       let owner = context_string(":userAddress")?;
+//       let contract = context_string(":contractAddress")?;
+//       let chain_id = context_string(":chainId")?;
+//       // ... call read_chain to check NFT balance ...
+//   }
 
 export const NFTConditionBuilder = ({
   condition,
@@ -14,10 +27,8 @@ export const NFTConditionBuilder = ({
   enabled,
 }: Props) => {
   const { library } = useEthers();
-  const nftAddress = '0x0'; // Create a new NFT here https://nfts2me.com/create/generative/
-  const [contractAddress, setContractAddress] = useState(nftAddress);
-  const [tokenId, setTokenId] = useState('');
-  const [chain, setChain] = useState(Sepolia.chainId);
+  const [wasmBase64, setWasmBase64] = useState('AGFzbQEAAAA=');
+  const [name, setName] = useState('nft-ownership');
 
   if (!enabled || !library) {
     return <></>;
@@ -34,51 +45,18 @@ export const NFTConditionBuilder = ({
     />
   );
 
-  const makeChainInput = (
-    onChange = (e: any) => console.log(e),
-    defaultValue?: number,
-  ) => (
-    <input
-      type="number"
-      onChange={(e: any) => onChange(Number.parseInt(e.target.value))}
-      defaultValue={defaultValue}
-    />
-  );
-
-  const contractAddressInput = makeInput(setContractAddress, nftAddress);
-  const tokenIdInput = makeInput(setTokenId);
-  const chainInput = makeChainInput(setChain, Sepolia.chainId);
-
-  const makeCondition = (): conditions.condition.Condition => {
-    if (tokenId) {
-      return new conditions.base.contract.ContractCondition({
-        contractAddress,
-        chain,
-        standardContractType: 'ERC721',
-        method: 'ownerOf',
-        parameters: [parseInt(tokenId, 10)],
-        returnValueTest: {
-          comparator: '==',
-          value: ':userAddress',
-        },
-      });
-    }
-    return new conditions.base.contract.ContractCondition({
-      contractAddress,
-      chain,
-      standardContractType: 'ERC721',
-      method: 'balanceOf',
-      parameters: [':userAddress'],
-      returnValueTest: {
-        comparator: '>',
-        value: 0,
-      },
-    });
-  };
+  const wasmInput = makeInput(setWasmBase64, 'AGFzbQEAAAA=');
+  const nameInput = makeInput(setName, 'nft-ownership');
 
   const onCreateCondition = (e: any) => {
     e.preventDefault();
-    setConditions(makeCondition());
+    setConditions(
+      new conditions.Condition({
+        wasm: wasmBase64,
+        name,
+        inputs: [':userAddress'],
+      }),
+    );
   };
 
   const prettyPrint = (obj: object | string) => {
@@ -93,18 +71,16 @@ export const NFTConditionBuilder = ({
       <h2>Step 1 - Create A Conditioned Access Policy</h2>
       <div>
         <div>
-          <h3>Customize your NFT-Condition</h3>
+          <h3>Build your WASM Condition</h3>
           <div>
             <p>
-              You can mint an NFT{' '}
-              <a href="https://nfts2me.com/create/generative/">here</a> or use
-              your own contract.
+              Build conditions with{' '}
+              <a href="https://github.com/nucypher/taco-pdk">taco-pdk</a>
             </p>
           </div>
           <div>
-            <p>ERC721 Contract Address {contractAddressInput}</p>
-            <p>(Optional) TokenId {tokenIdInput}</p>
-            <p>Chain Id {chainInput}</p>
+            <p>WASM Bytecode (base64) {wasmInput}</p>
+            <p>Condition Name {nameInput}</p>
           </div>
           <button onClick={onCreateCondition}>Create Conditions</button>
         </div>
