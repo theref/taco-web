@@ -22,7 +22,7 @@ import {
 import { ethers } from 'ethers';
 import { arrayify, keccak256 } from 'ethers/lib/utils';
 
-import { ConditionExpression } from './conditions/condition-expr';
+import { Condition } from './conditions/condition';
 import { ConditionContext } from './conditions/context';
 import { DkgClient } from './dkg';
 
@@ -38,7 +38,7 @@ const ERR_RITUAL_ID_MISMATCH = (
 export const encryptMessage = async (
   plaintext: Uint8Array | string,
   encryptingKey: DkgPublicKey,
-  conditions: ConditionExpression,
+  conditions: Condition,
   authSigner: ethers.Signer,
 ): Promise<ThresholdMessageKit> => {
   const [ciphertext, authenticatedData] = encryptForDkg(
